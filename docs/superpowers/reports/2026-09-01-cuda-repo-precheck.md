@@ -333,5 +333,83 @@ runtime-пакетов.
   из nvidia-xorg); `.so` из 8 пакетов он не подгружает. Для динамически-линкуемого
   реального рантайма (llama.cpp) эти `.so` присутствуют и доступны в ld-кэше —
   пройдена проверка «установлено + присутствует + резолвится», но
-  «динамическая подгрузка каждого `.so`» этим hello не покрыта (критерий брифа —
-  «сборка + запуск на GPU + ldd без not found» — выполнен).
+   «динамическая подгрузка каждого `.so`» этим hello не покрыта (критерий брифа —
+   «сборка + запуск на GPU + ldd без not found» — выполнен).
+
+### 3.7. [доп. проба] динамическая линковка runtime-набора
+
+Базовый hello (§3.2–3.6) линкует cudart статически и math-библиотеки не
+использует, поэтому п.6 для динамически-линкуемого потребителя (llama.cpp) не
+покрывался. Добавлена вторая проба `hello_dyn`: тот же vector-add + реальная
+работа math-библиотек; собирается с `-cudart shared` (cudart — динамический) и
+явными `-l` по math-библиотекам.
+
+- **Компиляция (devel-образ):**
+  `nvcc -cudart shared -ccbin g++-15 -arch=sm_86 -lcublas -lcufft -lcurand -lcusolver -lcusparse -o hello_dyn hello_dyn.cu`
+  → OK (ELF 64-bit, dynamically linked, 34272 B). `DT_NEEDED` (CUDA) =
+  libcudart.so.13, libcublas.so.13, libcufft.so.12, libcurand.so.10,
+  libcusolver.so.12, libcusparse.so.12 (+ стандартные C/C++).
+- **По библиотекам (что делает каждый вызов):**
+  - **cublas — функционально**: `cublasCreate` + `cublasSgemm` (C = A·B, A 2×3,
+    B 3×2, column-major, alpha=1/beta=0) + `cublasDestroy` — сверено с известным
+    ответом `C = {{58,64},{139,154}}`.
+  - **cufft — функционально**: `cufftPlan1d` + `cufftExecC2C` (прямое БПФ-4
+    импульса [1,0,0,0]) + `cufftDestroy` — сверено с [1,1,1,1].
+  - **curand — функционально**: `curandCreateGenerator` +
+    `curandSetPseudoRandomGeneratorSeed` + `curandGenerateUniform` (1024) +
+    `curandDestroyGenerator` — все значения в [0,1).
+  - **cusolver — create/destroy** (в этой версии заголовка нет
+    `cusolverDnGetVersion`): `cusolverDnCreate` + `cusolverDnDestroy` — для
+    попадания в DT_NEEDED.
+  - **cusparse — create/destroy + версия**: `cusparseCreate` +
+    `cusparseGetVersion` (12802) + `cusparseDestroy` — для DT_NEEDED + факт
+    версии.
+- **Запуск на GPU (один раз, `--rm --privileged --device /dev/nvidia0`):**
+
+  ```
+  vecadd   got=1571328.0 expect=1571328.0 OK
+  cublas   C={58,139,64,154} expect={58,139,64,154} maxerr=0 OK
+  cufft    out={1,0},{1,0},{1,0},{1,0} maxerr=0 OK
+  curand   n=1024 range=[0.0017,0.9994] out_of_range=0 OK
+  cusolver cusolverDnCreate/Destroy OK
+  cusparse cusparseCreate/Destroy OK, version=12802
+  TOTAL OK (failures=0)
+  exit=0
+  ```
+- **ldd /hello_dyn (CUDA-строки; всё резолвится, «not found» нет):**
+
+  ```
+  libcublas.so.13    => /usr/local/cuda/targets/x86_64-linux/lib/libcublas.so.13
+  libcufft.so.12     => /usr/local/cuda/targets/x86_64-linux/lib/libcufft.so.12
+  libcurand.so.10    => /usr/local/cuda/targets/x86_64-linux/lib/libcurand.so.10
+  libcusolver.so.12  => /usr/local/cuda/targets/x86_64-linux/lib/libcusolver.so.12
+  libcusparse.so.12  => /usr/local/cuda/targets/x86_64-linux/lib/libcusparse.so.12
+  libcudart.so.13    => /usr/local/cuda/targets/x86_64-linux/lib/libcudart.so.13
+  libcublasLt.so.13  => /usr/local/cuda/targets/x86_64-linux/lib/libcublasLt.so.13    (транзитивно, через libcublas)
+  libnvJitLink.so.13 => /usr/local/cuda/targets/x86_64-linux/lib/libnvJitLink.so.13   (транзитивно, через libcusolver)
+  ```
+  (`/usr/local/cuda` → `/usr/local/cuda-13.3`, как в §2.4.)
+- **Какие из 8 `.so`-пакетов подгружаются динамически** (в ldd всего 8 `.so`:
+  6 прямых `DT_NEEDED` + 2 транзитивных):
+
+  | пакет | `.so` в ldd | как |
+  |---|---|---|
+  | cuda-cudart | libcudart.so.13 | прямая |
+  | libcublas | libcublas.so.13, libcublasLt.so.13 | прямая + транзитивно |
+  | libcufft | libcufft.so.12 | прямая |
+  | libcurand | libcurand.so.10 | прямая |
+  | libcusolver | libcusolver.so.12 | прямая |
+  | libcusparse | libcusparse.so.12 | прямая |
+  | libnvjitlink | libnvJitLink.so.13 | транзитивно (через libcusolver) |
+  | libnvfatbin | — (не в дереве) | **не подгружается** |
+
+  `libnvfatbin.so.13` — «листок»: ни один из 8 `.so` не имеет его в
+  `DT_NEEDED` (проверено `readelf -d` по всем), поэтому этим бинарником не
+  подгружается; сам `.so` при этом установлен и резолвится (§3.5).
+- **Скорректированный вывод по п.6:** runtime-набор из 8 пакетов **достаточен**
+  для реального (динамически-линкуемого) CUDA-программы; **добавлять нечего**.
+  7 из 8 пакетов реально подгружаются (в ldd 8 `.so`: 6 прямых + 2 транзитивных)
+  и резолвятся в `/usr/local/cuda-13.3/...`; ключевые вызовы (cublas Sgemm,
+  cufft БПФ, curand) отработали на GPU с верным ответом (exit 0). Единственный
+  не подгруженный этим бинарником `libnvfatbin.so.13` установлен и доступен в
+  ld-кэше — динамический потребитель, которому он нужен, его найдёт.
