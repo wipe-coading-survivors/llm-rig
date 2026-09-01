@@ -213,3 +213,125 @@ HTTPS — rc=60 (сертификат). В первой попытке (attempt1
   `73CD9B30.pub`, 1.6 KiB), 2.6 GiB за 01m05s (среднее 40.4 MiB/s).
   Размеры образов: `cuda-precheck-devel:tmp` = 4.97 GB,
   `cuda-precheck-devel-weak:tmp` = 4.98 GB.
+
+## 3. hello-cuda на GPU (п.6)
+
+Образ runtime `cuda-precheck-libs:tmp` (2.63 GB): `FROM nvidia-xorg:610.43.03 as
+drv` + `FROM nvidia-base:44` + `COPY hello /hello` + dnf install 8 NEVRA
+runtime-набора + копирование driver userspace из drv-стадии (тот же набор путей,
+что `nvidia-cuda-devel.containerfile`: `/opt/nvidia/`, `usr/lib64/libcuda*`,
+`usr/lib64/libnvidia*`, `10_local.conf`). Логи и выходы проб (стедж):
+`compile-hello.log` (неудача по брифу), `compile-hello-corrected.log` (успех),
+`build-libs.log`, `run-hello-gpu.log`, `ldd-hello.log`, `verify-libs.txt`.
+
+### 3.1. Среда: три отклонения (документированы)
+
+- **hello.cu: запуск ядра как обычный вызов функции** (ошибка брифа). Строка
+  брифа `add(n / 256, 256, a, b, c, n);` отклоняется nvcc 13.3.1 (4 ошибки:
+  «too many arguments in function call» — `__global__ add` принимает 4
+  аргумента, а передано 6). Исправлено на стандартный запуск ядра
+  `add<<<n / 256, 256>>>(a, b, c, n);` (4 блока × 256 потоков = 1024 элементов;
+  4 аргумента ядра `a,b,c,n`); все остальные строки — дословно из брифа. Без
+  исправления бинарник не собирается → проба на GPU невозможна.
+- **nvcc не в PATH devel-образа**: в `cuda-precheck-devel:tmp` nvcc —
+  `/usr/local/cuda/bin/nvcc` (через альтернативы → `/usr/local/cuda-13.3`), но
+  ни в PATH, ни в ENV/profile.d не добавлен. Компиляция выполнена с
+  `export PATH=/usr/local/cuda/bin:$PATH`; вызов nvcc — дословно
+  (`-ccbin g++-15 -arch=sm_86 -o /s/hello /s/hello.cu`).
+- **Базовое Fedora-зеркало** — отклонение §2.1, перенесено: зашитое в
+  `nvidia-base:44` `mirror.getpods.ru` было мертво со сборочного хоста в этом же
+  окне пре-чека (факт §2.1). Фикс применён **проактивно** на том же основании
+  (тот же базовый образ `nvidia-base:44`, тот же сборочный хост, то же окно), не
+  повторяя «тупик» мёртвого зеркала заново: только базовые репо (`fedora`,
+  `updates`) перенаправлены на `mirror.yandex.ru` через
+  `dnf config-manager setopt`; NVIDIA-репо (curl `cuda-fedora44.repo`) —
+  дословно по брифу. Итог: в `build-libs.log` **ноль ошибок базовых репо**.
+
+### 3.2. Компиляция (devel-образ): OK
+
+nvcc 13.3.1 (V13.3.73), `-ccbin g++-15 -arch=sm_86` (host g++15 — как в
+прод-цепи), bind-mount стеджа. `COMPILE_OK`; бинарник `ELF 64-bit LSB
+executable, x86-64, dynamically linked, 1070064 B, with debug_info, not
+stripped` (`file`).
+
+### 3.3. Установка 8 NEVRA (runtime-образ): OK, ровно версии из §1
+
+Транзакция (`build-libs.log`): «Установка: 11 пакетов» = 8 NEVRA runtime-набора
++ 3 noarch `cuda-toolkit-*-config-common`, все из `cuda-fedora44-x86_64`:
+
+```
+cuda-cudart-13-3-13.3.29-1.x86_64
+libcublas-13-3-13.6.0.2-1.x86_64
+libcufft-13-3-12.3.0.29-1.x86_64
+libcurand-13-3-10.4.3.29-1.x86_64
+libcusolver-13-3-12.2.6.9-1.x86_64
+libcusparse-13-3-12.8.2.51-1.x86_64
+libnvfatbin-13-3-13.3.29-1.x86_64
+libnvjitlink-13-3-13.3.33-1.x86_64
++ cuda-toolkit-13-3-config-common / cuda-toolkit-13-config-common /
+  cuda-toolkit-config-common (noarch, 13.3.29-1)
+```
+
+Все 8 — точно по §1 (сверка `rpm -q`, `verify-libs.txt`). GPG-ключ
+`0x73CD9B30` импортирован (отпечаток
+`129994480EC63D2789BC98E490DFED2F73CD9B30` — совпадает с §1). Скачивание
+1.0 GiB, среднее 12.0 MiB/s (01m27s); «Завершено!». `dnf clean all` — 101 MiB
+кэша убрано.
+
+### 3.4. Запуск на GPU (ненагружающая проба): OK, exit 0
+
+Один раз, маленький запуск (1024-элементный vector add, managed memory):
+
+```
+$ podman-remote run --rm --privileged --device /dev/nvidia0 cuda-precheck-libs:tmp /hello
+sum got=1571328.0 expect=1571328.0
+exit=0
+```
+
+`got == expect` → CUDA-ядро отработало на `/dev/nvidia0`; `--privileged` +
+`--device /dev/nvidia0` — паттерн llama-cpp.service. Влияние на живую
+генерацию (llama-server на других GPU/контекстах) — мигновено (один маленький
+запуск).
+
+### 3.5. ldd /hello (в контейнере): всё резолвится, «not found» нет
+
+```
+linux-vdso.so.1
+libstdc++.so.6 => /lib64/libstdc++.so.6
+libm.so.6 => /lib64/libm.so.6
+libgcc_s.so.1 => /lib64/libgcc_s.so.1
+libc.so.6 => /lib64/libc.so.6
+/lib64/ld-linux-x86-64.so.2
+```
+
+**Ключевой нюанс: `libcudart.so.13` в ldd нет.** Причина (проверено
+`readelf`/`strings` по тому же бинарнику в devel-образе): nvcc по умолчанию
+линкует CUDA **рантайм статически** — `cudaMallocManaged`/`cudaDeviceSynchronize`
+в `/hello` — определённые символы (`FUNC GLOBAL HIDDEN`, `libcudart_static_*`
+встроены в бинарник), `DT_NEEDED` = только 5 стандартных C/C++-библиотек
+(libstdc++, libm, libgcc_s, libc, ld-linux). Статический cudart при первом
+обращении подгружает **драйвер** `libcuda.so.1` через `dlopen`. Т.е. GPU-путь
+`/hello` зависит от driver userspace (`/usr/lib64/libcuda.so.1 ->
+libcuda.so.610.43.03` — из drv-стадии nvidia-xorg), а не от `.so` из 8
+runtime-пакетов.
+
+Присутствие `.so` из 8 пакетов подтверждено (`ldconfig -p` + реальные файлы,
+`verify-libs.txt`): все в `/usr/local/cuda-13.3/targets/x86_64-linux/lib/`
+(`libcudart.so.13`, `libcublas(Lt).so.13`, `libcufft(w).so.12`,
+`libcurand.so.10`, `libcusolver(Mg).so.12`, `libcusparse.so.12`,
+`libnvJitLink.so.13`, `libnvfatbin.so.13`).
+
+### 3.6. Вывод (п.6)
+
+- **runtime-набор из 8 пакетов достаточен: добавить нечего** (нет ни одного
+  «not found»). Все 8 ставятся dnf'ом по точным NEVRA (§1), все `.so`
+  присутствуют и резолвятся (`ldconfig`); hello-cuda отработал на GPU (exit 0,
+  `sum` совпадает), `ldd` — всё резолвится.
+- **Ограничение пробы (для основной спеки):** этот hello линкует cudart
+  **статически** (default nvcc) и math-библиотеки не использует, поэтому
+  динамически нагружает только базовый C/C++-рантайм + драйвер (`libcuda.so.1`
+  из nvidia-xorg); `.so` из 8 пакетов он не подгружает. Для динамически-линкуемого
+  реального рантайма (llama.cpp) эти `.so` присутствуют и доступны в ld-кэше —
+  пройдена проверка «установлено + присутствует + резолвится», но
+  «динамическая подгрузка каждого `.so`» этим hello не покрыта (критерий брифа —
+  «сборка + запуск на GPU + ldd без not found» — выполнен).
