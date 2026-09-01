@@ -1,0 +1,12 @@
+[Unit]
+Description=llama-cpp zombie watcher (CUDA error в журнале -> podman kill; юнит оживляет контейнер)
+After=llama-cpp.service
+
+[Service]
+ExecStart=/usr/local/bin/llama-cpp-watcher.sh
+Restart=always
+RestartSec=30
+Type=simple
+
+[Install]
+WantedBy=default.target

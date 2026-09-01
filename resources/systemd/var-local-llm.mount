@@ -1,0 +1,13 @@
+[Unit]
+Description=Mount /var/local/llm (NFS @LLM_NFS_SERVER@:/mnt/sas/llm)
+After=network-online.target
+Wants=network-online.target
+
+[Mount]
+What=@LLM_NFS_SERVER@:/mnt/sas/llm
+Where=/var/local/llm
+Type=nfs
+Options=vers=4.2,hard,tcp
+
+[Install]
+WantedBy=multi-user.target

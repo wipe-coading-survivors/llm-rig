@@ -1,0 +1,44 @@
+[Unit]
+Description=Podman container NVidia Card Tuning Service
+After=network-online.target nvidia-kmod.service
+Wants=network-online.target nvidia-kmod.service
+RequiresMountsFor=/run/containers/storage
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=/etc/sysconfig/nvidia-card-setting
+ExecStartPre=-/usr/bin/podman rm -f nvidia-card-setting
+ExecStartPre=/usr/bin/mkdir -p /run/lactd
+ExecStartPre=/usr/bin/rm -f /run/lactd/lactd.sock
+ExecStart=/usr/bin/podman run \
+    --name nvidia-card-setting \
+    --privileged \
+    -u 0 \
+    -v /etc/lact:/etc/lact:z \
+    -v /run/lactd:/run/lactd:z \
+    -e PWR_LIMIT=${PWR_LIMIT} \
+    -e MEM_CLOCK_OFFSET=${MEM_CLOCK_OFFSET} \
+    -e CORE_CLOCK_OFFSET=${CORE_CLOCK_OFFSET} \
+    -e FAN_MODE=${FAN_MODE} \
+    -e FAN_CURVE=${FAN_CURVE} \
+    -e PER_CARD_OVERRIDES=${PER_CARD_OVERRIDES} \
+    -e SAFE_PL=${SAFE_PL} \
+    -e SAFE_FAN_STATIC=${SAFE_FAN_STATIC} \
+    -e SAFE_PM_MODE=${SAFE_PM_MODE} \
+    -e IDLE_PL=${IDLE_PL} \
+    -e IDLE_PM_MODE=${IDLE_PM_MODE} \
+    -e IDLE_MEM_CLOCK=${IDLE_MEM_CLOCK} \
+    -e LOCKED_CORE_CLOCK=${LOCKED_CORE_CLOCK} \
+    -e LOCKED_MEM_CLOCK=${LOCKED_MEM_CLOCK} \
+    -e LOCKED_MEM_OFFSET=${LOCKED_MEM_OFFSET} \
+    -e LOCKED_PL=${LOCKED_PL} \
+    -e LOCKED_PM_MODE=${LOCKED_PM_MODE} \
+    -e LACT_DAEMON_SOCKET_PATH=/run/lactd/lactd.sock \
+    ${LACT_IMAGE} \
+    /lact.sh daemon
+Restart=always
+RestartSec=30
+Type=simple
+
+[Install]
+WantedBy=default.target

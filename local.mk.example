@@ -1,0 +1,8 @@
+# local.mk — machine-local values.
+# cp local.mk.example local.mk и заполнить реальными значениями.
+# local.mk gitignored; сборка образов работает без него,
+# `make systemd` — fail-loud.
+# Плейсхолдеры — RFC 5737 TEST-NET-1 (192.0.2.0/24).
+
+LLAMA_HOST = 192.0.2.1
+LLM_NFS_SERVER = 192.0.2.2

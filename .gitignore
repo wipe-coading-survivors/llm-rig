@@ -1,0 +1,9 @@
+empty
+local.mk
+llama-cpp
+nccl
+open-gpu-kernel-modules
+debug/syms
+debug/repro-llama-block3-driver-reloaded
+.worktrees
+__pycache__/

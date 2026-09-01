@@ -1,0 +1,31 @@
+[Unit]
+Description=Podman container NVidia Modules Load Service
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/run/containers/storage
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=/etc/sysconfig/nvidia-kmod
+ExecStartPre=/usr/local/bin/nvidia-kmod-select.sh
+ExecStart=/usr/bin/podman run --rm -i \
+    --privileged \
+    --security-opt label=disable \
+    -u 0 \
+    -v /dev:/dev \
+    ${KMOD_IMAGE} \
+	bash /load-modules.sh
+ExecStartPost=/usr/bin/podman run --rm -i \
+    --privileged \
+    --security-opt label=disable \
+    -u 0 \
+    -v /dev:/dev \
+    ${KMOD_IMAGE} \
+	bash /create-devices.sh
+RemainAfterExit=True
+Restart=on-failure
+RestartSec=30
+Type=oneshot
+
+[Install]
+WantedBy=default.target

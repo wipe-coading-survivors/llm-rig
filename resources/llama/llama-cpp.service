@@ -1,0 +1,31 @@
+[Unit]
+Description=Podman container llama.cpp CUDA server (multi-GPU, NCCL)
+After=network-online.target nvidia-kmod.service nvidia-card-setting.service var-local-llm.mount
+Wants=network-online.target nvidia-kmod.service nvidia-card-setting.service
+Requires=var-local-llm.mount
+RequiresMountsFor=/run/containers/storage
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=/etc/sysconfig/llama-cpp
+ExecStartPre=-/usr/bin/podman rm -f llama-cpp
+ExecStart=/usr/bin/podman run \
+    --name llama-cpp \
+    --device /dev/nvidia0 \
+    --device /dev/nvidia1 \
+    --device /dev/nvidia2 \
+    --device /dev/nvidia3 \
+    --device /dev/nvidia4 \
+    --security-opt label=disable --privileged --shm-size=${LLAMA_SHM_SIZE} \
+    -v /var/local/llm/gguf-models:/models \
+    -v /etc/llama:/root/llama:ro \
+    -p ${LLAMA_PORT}:8080 \
+    -e LLAMA_LOG_TIMESTAMPS=${LLAMA_LOG_TIMESTAMPS} \
+    ${LLAMA_IMAGE} --port 8080 --host 0.0.0.0 \
+    --models-preset /root/llama/llama.ini --metrics
+Restart=always
+RestartSec=30
+Type=simple
+
+[Install]
+WantedBy=default.target

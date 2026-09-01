@@ -1,0 +1,42 @@
+[Unit]
+Description=Podman container LACT profile auto-switch helper
+After=network-online.target nvidia-kmod.service nvidia-card-setting.service llama-cpp.service
+Wants=network-online.target nvidia-kmod.service nvidia-card-setting.service llama-cpp.service
+RequiresMountsFor=/run/containers/storage
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=/etc/sysconfig/lact-autoswitch
+ExecStartPre=-/usr/bin/podman rm -f lact-autoswitch
+ExecStartPre=/usr/bin/mkdir -p /run/lactd /run/lact-autoswitch
+ExecStart=/usr/bin/podman run \
+    --name lact-autoswitch \
+    --privileged \
+    --security-opt label=disable \
+    -v /run/lactd:/run/lactd:z \
+    -v /run/lact-autoswitch:/run/lact-autoswitch:z \
+    -v /etc/llama:/etc/llama:ro \
+    -e LACT_DAEMON_SOCKET_PATH=/run/lactd/lactd.sock \
+    -e LLAMA_URL=${LLAMA_URL} \
+    -e LLAMA_MODEL=${LLAMA_MODEL} \
+    -e LLAMA_KEYS_FILE=${LLAMA_KEYS_FILE} \
+    -e KEY_MARKER=${KEY_MARKER} \
+    -e POLL_INTERVAL=${POLL_INTERVAL} \
+    -e THERMAL_EVERY=${THERMAL_EVERY} \
+    -e TIME_IDLE=${TIME_IDLE} \
+    -e TIME_DOWN=${TIME_DOWN} \
+    -e TEMP_SAFE=${TEMP_SAFE} \
+    -e TIME_SAFE_DUR=${TIME_SAFE_DUR} \
+    -e TEMP_SAFE_BACK_DELTA=${TEMP_SAFE_BACK_DELTA} \
+    -e TIME_SAFE_BACK_DUR=${TIME_SAFE_BACK_DUR} \
+    -e TIME_DOWN_LACT=${TIME_DOWN_LACT} \
+    -e FALLBACK_PL=${FALLBACK_PL} \
+    -e HISTORY_LINES=${HISTORY_LINES} \
+    ${LACT_AUTOSWITCH_IMAGE} \
+    /usr/bin/python3 /lact-autoswitch.py
+Restart=always
+RestartSec=30
+Type=simple
+
+[Install]
+WantedBy=default.target
