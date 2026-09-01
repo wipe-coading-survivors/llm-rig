@@ -37,6 +37,15 @@ LLM (NVIDIA): модули ядра, драйвер, OC/авто-свитч, р�
 - [ ] lact-autoswitch: до-состояние при пересборке драйвера
 - [ ] док: README-секции по развёртыванию (с local.mk)
 
+### 24. CUDA toolkit: NVIDIA fedora44 dnf-репо (13.2.2 → 13.3.1)
+- [ ] Пре-чек: dnf5×репо, NEVRA-пины, weakdeps, размещение файлов,
+      runtime-сет на GPU, пробы сборки NCCL/llama на 13.3.1 (отчёт)
+- [ ] Основная спека (по фактам пре-чека)
+- [ ] Реализация: cuda-devel/cuda-libs через dnf (точные NEVRA),
+      убрать `nvidia-redist-cuda`, `/opt/cuda` → `/usr/local/cuda`,
+      Makefile, тесты
+- [ ] Live-окно: пересборка всей цепи + прогон llama-server
+
 ## Перенесено из архива (старая нумерация)
 
 - [ ] MTP A/B perf-тест (Этап 12, целиком)
