@@ -555,3 +555,44 @@ GGML_CUDA_NCCL=ON`, `-GNinja`. Лог (стедж): `llama-configure.log`.
   cmake-configure не проходит** на toolkit-only образе из-за отсутствующего
   `libcuda.so`; основной спеке нужен `cuda-driver-devel` (стуб драйвера) в
   devel-наборе, чтобы Generate step дошёл до генерации build-файлов.
+
+### [доп. проба] cuda-driver-devel (libcuda.so stub)
+
+Гипотеза из п.5 (добавить `cuda-driver-devel`) **проверена и подтверждена**.
+Собран второй throwaway-образ `cuda-precheck-nccl2:tmp` (`40b88382905e`) —
+дословно `cuda-precheck-nccl:tmp` (`529faf73b3ac`) плюс одна строка
+`RUN dnf install -y --setopt=install_weak_deps=False
+cuda-driver-devel-13-3-13.3.29-1 && dnf clean all` (weakdeps off, из
+NVIDIA-репо). Установка тянет ровно 1 пакет (46 KiB загрузка / 139.5 KiB на
+диске), без Recommends и без апгрейдов/удалений.
+
+- **NEVRA:** `cuda-driver-devel-13-3-13.3.29-1.x86_64` (имя файла в инвентаре
+  §1); в dnf5 отображается как `cuda-driver-devel-13-3-0:13.3.29-1.x86_64`
+  (name = `cuda-driver-devel-13-3`, version = `13.3.29`, release = `1`, epoch 0
+  — в имени файла опущен). Это тот же пакет, версия не расходится. Размер:
+  48 KB (инвентарь) ≈ 46 KiB download / 139.5 KiB installed (dnf5). Даёт
+  **стуб** `libcuda.so` в
+  `/usr/local/cuda-13.3/targets/x86_64-linux/lib/stubs/libcuda.so` — единственный
+  `libcuda.so` в образе (в `cuda-precheck-nccl:tmp` его не было).
+- **Итог configure: УСПЕХ.** Тот же cmake (флаги дословно из брифа, тот же клон
+  `b356fa26…`), новый образ — `exit 0`. Дословно из `llama-configure-cddev.log`:
+  ```
+  -- Found CUDAToolkit: /usr/local/cuda/targets/x86_64-linux/include;/usr/local/cuda/targets/x86_64-linux/include/cccl (found version "13.3.73")
+  -- The CUDA compiler identification is NVIDIA 13.3.73 with host compiler GNU 15.3.1
+  -- Found NCCL: /usr/local/cuda/lib64/libnccl.so
+  -- Including CUDA backend
+  -- Configuring done (4.4s)
+  -- Generating done (0.2s)
+  -- Build files have been written to: /s/llama/build
+  ```
+  CUDA version (`13.3.73`) и NCCL-детекция (`/usr/local/cuda/lib64/libnccl.so`)
+  **идентичны** упавшему прогону; Generate step теперь доходит до генерации
+  build-файлов. **Единственный дельта** между упавшим (`cuda-precheck-nccl:tmp`)
+  и успешным (`cuda-precheck-nccl2:tmp`) прогоном — пакет-стуб `cuda-driver-devel`:
+  появление `libcuda.so` позволяет `FindCUDAToolkit` создать imported-таргет
+  `CUDA::cuda_driver`, на котором упал первый прогон.
+- **Скорректированный вывод для основной спеки:** devel-набор = **7
+  закреплённых NEVRA (§1) + `cuda-driver-devel-13-3-13.3.29-1`** — проверено: на
+  этом наборе llama.cpp cmake-configure на 13.3.1 **проходит** (CUDA 13.3.73,
+  NCCL по `NCCL_ROOT=/usr/local/cuda`). Факт ошибки Generate step из п.5 остаётся
+  в силе для toolkit-only образа (без `cuda-driver-devel`).
