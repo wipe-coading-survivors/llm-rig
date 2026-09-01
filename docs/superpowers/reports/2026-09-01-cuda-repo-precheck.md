@@ -468,5 +468,90 @@ NVCC_GENCODE="-gencode=arch=compute_86,code=sm_86"` (`nproc=28`). Общие
   containerfile уже явным образом ставит `gcc${GCC_VER}{,-c++}` и шлёт
   `CXX=g++-${GCC_VER}`. Переворот на дефолтный 16 сломал бы сборку NCCL (и
   любой CUDA-кода) сразу на первом `.cu`. При миграции 13.2 → 13.3.1 пин
-  g++15 **не меняется** — он и есть причина, по которой прод-цепь
-  собирается.
+   g++15 **не меняется** — он и есть причина, по которой прод-цепь
+   собирается.
+
+## 5. llama.cpp cmake-configure на 13.3.1 (п.9)
+
+llama.cpp master клонирован в стедж (`$S/llama`, `--depth 1`), cmake-configure
+выполнен в образе `cuda-precheck-nccl:tmp` (база `cuda-precheck-devel:tmp` +
+NCCL из Task 4, размещённый в `/usr/local/cuda-13.3/{lib64,include}` ровно как
+в прод-цепи). Флаги — дословно из `llama-cpp-cuda.containerfile`, адаптированные
+под `/usr/local/cuda` (вместо прод-значения `/opt/cuda`): `NVCC →
+/usr/local/cuda/bin/nvcc`, `NCCL_ROOT → /usr/local/cuda`, `CUDA_ARCH=86`,
+`C/CXX = gcc-15/g++-15`, `GGML_CUDA=ON GGML_CUDA_FORCE_MMQ=ON
+GGML_CUDA_NCCL=ON`, `-GNinja`. Лог (стедж): `llama-configure.log`.
+
+- **llama.cpp: `b356fa2624643b6d5753162ae43efff8cdd4d8cb`** (HEAD master,
+  2026-09-01 20:16:07 +0200, «kv-cells: look up the n-gram history in the
+  sequence position index (#28040)»); working tree чистый
+  (`git status --porcelain` пуст, `build/` — в `.gitignore`). cmake в выводе
+  пометил `ggml commit: b356fa2-dirty` (короткий хэш совпадает с HEAD;
+  суффикс `-dirty` добавлен cmake). `ggml version: 0.22.0`,
+  `llama.cpp version: 0.3.0-dev`.
+
+- **Configure: ошибка** — не на детекции CUDA/NCCL, а на **Generate step**.
+  Фаза configure прошла (`-- Configuring done (4.5s)`), упал Generate (дословно
+  из лога):
+  ```
+  CMake Error at ggml/src/ggml-cuda/CMakeLists.txt:182 (target_link_libraries):
+    Target "ggml-cuda" links to:
+
+      CUDA::cuda_driver
+
+    but the target was not found.  Possible reasons include:
+
+      * There is a typo in the target name.
+      * A find_package call is missing for an IMPORTED target.
+      * An ALIAS target is missing.
+
+  -- Generating done (0.2s)
+  CMake Generate step failed.  Build files cannot be regenerated correctly.
+  ```
+  Причина: в dnf-образе toolkit **нет `libcuda.so` (драйвер)**. Модуль CMake
+  `FindCUDAToolkit` создаёт imported-таргет `CUDA::cuda_driver` только при
+  обнаружении `libcuda.so`; `find / -name 'libcuda.so*'` — пусто. Toolkit
+  шлёт стубы для cublas/cublasLt/cufft/cufftw/curand/cusolver/cusolverMg/
+  cusparse/nvJitLink в `lib64/stubs/`, но **стуба `libcuda.so` нет**
+  (проверено в `cuda-precheck-nccl:tmp`).
+
+- **CUDA version по выводу cmake: `13.3.73`** (nvcc `V13.3.73`, release 13.3,
+  = NEVRA toolkit 13.3.1). Дословно из лога:
+  ```
+  -- Found CUDAToolkit: /usr/local/cuda/targets/x86_64-linux/include;/usr/local/cuda/targets/x86_64-linux/include/cccl (found version "13.3.73")
+  -- The CUDA compiler identification is NVIDIA 13.3.73 with host compiler GNU 15.3.1
+  ```
+  CUDA backend включён (`-- Including CUDA backend`), host-компилятор GNU 15.3.1
+  принят nvcc.
+
+- **NCCL: определён по NCCL_ROOT=/usr/local/cuda — да.** Дословно из лога:
+  ```
+  -- Found NCCL: /usr/local/cuda/lib64/libnccl.so
+  ```
+  (`/usr/local/cuda` → `/usr/local/cuda-13.3`; `libnccl.so.2.31.2` из Task 4
+  скопирован в `lib64/`, заголовки `nccl.h`/`nccl_device.h`/`nccl_device/` — в
+  `include/`.)
+
+- **Вывод для NVCC/NCCL_ROOT в основной спеке:**
+  - `NVCC=/usr/local/cuda/bin/nvcc` — **работает** (CUDA backend определён,
+    nvcc 13.3.73, host g++15 принят).
+  - `NCCL_ROOT=/usr/local/cuda` — **работает** (NCCL найден в
+    `/usr/local/cuda/lib64/libnccl.so`).
+  - **Но** dnf-toolkit devel-набор **один не достаточен** для cmake-configure
+    llama.cpp: не хватает `libcuda.so` (драйвер) → `CUDA::cuda_driver` не
+    создаётся → Generate step падает. В прод-цепи `libcuda.so` приходит из
+    драйверских user-space-библиотек: `nvidia-cuda-devel.containerfile`
+    копирует `libcuda*` из `nvidia-xorg`-образа в `/usr/lib64`.
+  - **Фикс для основной спеки:** добавить в devel-образ пакет
+    `cuda-driver-devel` (NEVRA `cuda-driver-devel-13-3-13.3.29-1.x86_64`,
+    48 KB) — он даёт **стуб** `libcuda.so` в
+    `/usr/local/cuda-13.3/targets/x86_64-linux/lib/stubs/libcuda.so`
+    (проверено `dnf repoquery -l`). Это build-time-эквивалент прод-драйвера:
+    для *сборки* достаточно стуба, реальный `libcuda.so.1` подхватывается из
+    драйвера на хосте в рантайме.
+
+- **Итог по п.9:** NVCC и NCCL_ROOT по `/usr/local/cuda` на 13.3.1 определены
+  корректно (CUDA 13.3.73, NCCL найден по `NCCL_ROOT`), но **полный
+  cmake-configure не проходит** на toolkit-only образе из-за отсутствующего
+  `libcuda.so`; основной спеке нужен `cuda-driver-devel` (стуб драйвера) в
+  devel-наборе, чтобы Generate step дошёл до генерации build-файлов.
