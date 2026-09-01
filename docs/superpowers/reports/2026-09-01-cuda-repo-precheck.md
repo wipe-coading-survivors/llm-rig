@@ -3,6 +3,7 @@
 - Дата: 01.09.2026
 - Статус: завершён (таблица решений, риски, cleanup — Task 6)
 - Спека: `docs/superpowers/specs/2026-09-01-cuda-repo-precheck.md`
+- Дополнение: §9 (debug-инструментарий, `cuda-sanitizer`)
 
 ## 1. Состояние репо
 
@@ -686,3 +687,65 @@ Cleanup выполнен в Task 6 (`CRE=podman-remote`). Все 5 throwaway-о�
 /run/host/tmp/cuda-precheck` (литеральный путь, допустимо без safe-rm по
 rm-rf-guard), `exit=0`. Проверка после: каталог отсутствует, в
 `/run/host/tmp` cuda-записей нет.
+
+## 9. Дополнение: debug-инструментарий — `cuda-sanitizer`
+
+Вопрос: покрывают ли найденные в пре-чеке cuda*.rpm бинарники, нужные
+образу `llama-cpp-cuda-debug` (CUDA debug-инструментарий)? Проверено
+по остаткам пре-чека (meta-пакеты в `/tmp/opencode/nvrepo/`,
+`repo-index.html`) + целевыми read-only-пробами.
+
+**Цепочки образов (Makefile):**
+
+- devel: `nvidia-cuda-devel` → `nvidia-nccl-devel` → base
+  `llama-cpp-cuda-debug` (builder = прод `llama-cpp-cuda`, `COPY /app`).
+- runtime (прод): `nvidia-cuda-devel` → `nvidia-cuda-libs`
+  (tar-copies **только** каталог `targets/x86_64-linux/lib` в
+  `/opt/cuda-VER/lib64`) → `nvidia-nccl` → base прод `llama-cpp-cuda`.
+
+**Единственный используемый в репо debug-инструмент —
+`compute-sanitizer`** (`debug/repro-llama-block3-run.sh:339`,
+`--entrypoint /opt/cuda/bin/compute-sanitizer`, сценарий B2'). В старом
+мире `nvidia-cuda-devel` ставил полный `.run`-тулкит
+(`installer.sh --toolkit`) → санитайзер был в devel-цепи, debug-образ
+наследовал его от base.
+
+**В новом мире devel-набор санитайзер НЕ несёт** (проверено):
+
+- closure `cuda-minimal-build` (`rpm -qpR` meta-пакета из пре-чека):
+  cccl, cuda-compiler, cuda-cudart-devel, cuda-culibos-devel,
+  cuda-profiler-api — санитайзера нет; транзитивный closure §2
+  подтверждает.
+- полная цепочка репо (`rpm -qpR` скачанных meta):
+  `cuda-toolkit → cuda-tools → cuda-command-line-tools →`
+  `{cuda-cupti-13-3>=13.3.75, cuda-gdb-13-3>=13.3.73,
+  cuda-nvdisasm-13-3>=13.3.73, cuda-nvtx-13-3>=13.3.29,
+  cuda-sanitizer-13-3>=13.3.75}`.
+- `ncu`/`nsys` (`cuda-nsight-compute`/`cuda-nsight-systems`) в репо
+  есть, но нигде в репозитории не используются → не нужны.
+
+**Пакет (скачан, `rpm -qlp`/`-qpR`):**
+
+- `cuda-sanitizer-13-3-13.3.75-1.x86_64` (17 MB; в репо две версии —
+  13.3.27 и 13.3.75, пин — свежая).
+- Requires: ноль (кроме rpmlib) — самодостаточный, 155 файлов.
+- Бинарник ровно `/usr/local/cuda-13.3/bin/compute-sanitizer`
+  (→ `/usr/local/cuda/bin/compute-sanitizer` через alternatives-синк).
+
+**Вывод — требование к основной спеке:**
+
+1. Добавить `cuda-sanitizer-13-3-13.3.75-1.x86_64` в NEVRA-пин-набор
+   **`nvidia-cuda-devel`** (не в `llama-cpp-cuda-debug`). Обоснование:
+   эквивалент старому миру (санитайзер был в devel-образе, debug-цепь
+   брала его от base); containerfile `llama-cpp-cuda-debug` не имеет
+   dnf-install стадии вообще (только `rm -rf /app`, `COPY --from=builder
+   /app`, `EXPOSE`) — dnf там был бы новым механизмом, а в devel это
+   одна строка в существующем пин-наборе.
+2. Прод не затрагивается: `llama-cpp-cuda` собирается на runtime-цепи,
+   `nvidia-cuda-libs` копирует только `lib`-каталог (файлы
+   санитайзера в `bin/` не копируются) → +17 MB только для
+   devel-цепи (`nvidia-cuda-devel`, `nvidia-nccl-devel`,
+   `llama-cpp-cuda-debug`).
+3. В спеке: путь в `debug/repro-llama-block3-run.sh:339`
+   `/opt/cuda/bin/compute-sanitizer` →
+   `/usr/local/cuda/bin/compute-sanitizer`.
