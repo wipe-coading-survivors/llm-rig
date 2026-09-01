@@ -1,7 +1,7 @@
 # Пре-чек: CUDA toolkit через NVIDIA fedora44 dnf-репо (Этап 24)
 
-- Дата: 01.09.2026 (дополняется по ходу)
-- Статус: в работе → завершён (обновить в Task 6)
+- Дата: 01.09.2026
+- Статус: завершён (таблица решений, риски, cleanup — Task 6)
 - Спека: `docs/superpowers/specs/2026-09-01-cuda-repo-precheck.md`
 
 ## 1. Состояние репо
@@ -596,3 +596,93 @@ NVIDIA-репо). Установка тянет ровно 1 пакет (46 KiB 
   этом наборе llama.cpp cmake-configure на 13.3.1 **проходит** (CUDA 13.3.73,
   NCCL по `NCCL_ROOT=/usr/local/cuda`). Факт ошибки Generate step из п.5 остаётся
   в силе для toolkit-only образа (без `cuda-driver-devel`).
+
+## 6. Таблица решений (заполнена)
+
+Заполнено по фактам §1–§5; структура строк — из пре-чек-спеки
+(«Таблица решений»). Каждая строка: выбранный исход (А/Б) + факт-основание.
+
+| Пункт | Выбранный исход | Факт-основание (по отчёту) |
+|---|---|---|
+| dnf5 × репо (1) | **А** — работает (makecache + install OK, GPG auto-import) | §2 п.1: `.repo` доставлен curl'ом из URL, `dnf makecache` (50.1 KiB), ключ `0x73CD9B30` импортирован автоматически из удалённого `gpgkey` (отпечаток совпадает с §1), транзакция 134 (devel) / 144 (weak) пакета «Заверчено!». ⚠ Факты §2.1 (makecache exit 0 при частичном сбое метаданных; отклонение базового зеркала) перенесены в §7 (риски 3 и 4). |
+| NEVRA (2) | **А** — точный NEVRA ставится; несуществующий — fail-loud (exit=1) | §2 п.2: 7 NEVRA devel-набора установлены ровно указанных версий; bad NEVRA → «Нет соответствия для аргумента», exit=1. **Коррекция: пин — БЕЗ суффикса `.rpm`** (на dnf5 суффикс `.rpm` = путь к локальному файлу, не NEVRA репо → «No such file or directory», exit=1; пример из пре-чек-спеки `cuda-nvcc-13-3-13.3.73-1.x86_64.rpm` как пин работать не будет). |
+| weakdeps (3) | **А** — дельта зафиксирована → `install_weak_deps=False` в основной спеке | §2 п.3: дельта = 10 пакетов / 12.0 MiB (314 vs 324 пакета), все — базовый тулчейн (7zip, bat, unzip, …), **ни одного CUDA-пакета** → weakdeps не несут нужного, отключаем. |
+| размещение (4) | **Б** (ближайший к шаблону) — libs НЕ в `/usr/lib64` | §2 п.4: факт не совпадает дословно ни с А, ни с Б шаблона — всё под `/usr/local/cuda-13.3/targets/x86_64-linux/lib` (+ hard-link'd `lib64`, одни иноды), в `/usr/lib64` только `*.pc` devel. `/etc/ld.so.conf.d`-входы (`000_cuda.conf`, `987_cuda-13.conf`) — **SHIPPED BY THE PACKAGES**; `/usr/local/cuda` — через package alternatives (`/etc/alternatives/cuda`). **Собственный ldconfig conf не нужен** (поставлен пакетами). |
+| runtime-набор (6) | **А** — набор из 8 пакетов достаточен, добавлять нечего | §3.6 + §3.7: 7/8 `.so` подгружаются динамически (ldd, 6 прямых `DT_NEEDED` + 2 транзитивных), Sgemm/cufft — точный ответ на GPU (exit 0), `libnvfatbin.so.13` — присутствующий лист (не в `DT_NEEDED` ни одного `.so`, но установлен и резолвится в ld-кэше). |
+| NCCL g++15 (7) | **А** — собирается → базовая конфигурация сохраняется | §4: `CXX=g++-15` exit=0, время **132 s**, `libnccl.so.2.31.2` (57 976 256 B) + `libnccl_static.a` + `ncclparam` на месте. |
+| NCCL g++16 (8) | **Б** — ошибка → оставить `GCC_VER=15` | §4: fail-loud на первом `.cu` — nvcc 13.3.1 `host_config.h` `#error -- unsupported GNU version! gcc versions later than 15 are not supported!`, exit=2 (12 s, до линковки не дошла) → **GCC_VER остаётся 15** (переворот на дефолтный 16 сломал бы NCCL/CUDA-код). |
+| llama configure (9) | **А** — configure OK; `NVCC`/`NCCL_ROOT` = `/usr/local/cuda` | §5: CUDA 13.3.73 (nvcc V13.3.73, host g++15 принят), NCCL найден по `NCCL_ROOT=/usr/local/cuda` (`/usr/local/cuda/lib64/libnccl.so`). **НО** (§5 + доп. проба): devel-набор = 7 пин NEVRA + `cuda-driver-devel-13-3-13.3.29-1` (стуб `libcuda.so` → `CUDA::cuda_driver`); на toolkit-only образе (7 NEVRA) Generate step падает. |
+
+## 7. Риски и факты для основной спеки
+
+Что корректируется в дизайне (набор пакетов, ldconfig-стратегия, пути,
+`GCC_VER`, способы пиннинга) — по заполненной таблице §6:
+
+1. **Devel-набор = 7 NEVRA (§1) + `cuda-driver-devel-13-3-13.3.29-1`** (проверено
+   в §5, доп. проба). 8-й пакет — обязательный, не опциональный: без стуба
+   `libcuda.so` cmake `FindCUDAToolkit` не создаёт `CUDA::cuda_driver` → Generate
+   step падает; со стубом configure проходит (exit 0). NEVRA — `13.3.29-1`, в dnf5
+   отображается `cuda-driver-devel-13-3-0:13.3.29-1.x86_64`.
+2. **NEVRA-пины — БЕЗ суффикса `.rpm`** (семантика dnf5, §2 п.2). Суффикс `.rpm`
+   заставляет dnf5 трактовать аргумент как путь к локальному файлу, а не как NEVRA
+   репо. Пины в containerfile основной спеки пишутся без `.rpm` (пример пиннинга из
+   пре-чек-спеки как пин не работает).
+3. **`dnf makecache` — exit 0 при частичном сбое загрузки метаданных** (§2.1). В логе
+   `Curl error (28)` / `Usable URL not found` и «Metadata cache created.» — `set -e`
+   containerfile это не ловит; ошибка проявляется только в транзакции
+   («Нет соответствия для аргумента»). **`makecache`-exit 0 — не health-check**
+   наличия метаданных.
+4. **Забитое базовое Fedora-зеркало `mirror.getpods.ru` (`/etc/dnf/vars/repobaseurl`
+   в `nvidia-base:44`) мертво со сборочного хоста** (§2.1): HTTP `Curl error (28)`
+   (hang), HTTPS rc=60 (сертификат). Пре-чек перенаправлял только базовые репо
+   (`fedora`, `updates`) на `mirror.yandex.ru` (работало, ~33 МБ/с, новый лейаут
+   F44). **Риск: прод-стадия `nvidia-base` наследует мёртвое зеркало → любая
+   прод-пересборка упрёт в тот же тупик.** Это отдельно от дизайна NVIDIA-репо —
+   основная спека (или отдельный фикс) должна зафиксировать рабочее базовое
+   зеркало.
+5. **`GCC_VER` остаётся 15** (nvcc 13.3.1 отклоняет gcc16, §4). Дефолтный g++16 F44
+   принимается nvcc только через `-allow-unsupported-compiler` (помечено «use at your
+   own risk» — не для прод). Переворот дефолта на 16 сломал бы сборку NCCL и любого
+   CUDA-кода сразу на первом `.cu`. Пин g++15 при миграции 13.2 → 13.3.1 **не
+   меняется** — он и есть причина, по которой прод-цепь собирается.
+6. **ldconfig — без собственного conf/ln в containerfiles** (§2 п.4). Пакетные
+   `/etc/ld.so.conf.d`-входы (`000_cuda.conf` → `/usr/local/cuda/targets/x86_64-linux/lib`,
+   `987_cuda-13.conf` → `/usr/local/cuda-13/targets/x86_64-linux/lib`) + альтернативный
+   symlink `/usr/local/cuda` (через `/etc/alternatives/cuda`) — поставлены пакетами.
+   Собственный ldconfig conf/ln в containerfile **не нужен** (проверить в основном
+   дизайне, что containerfile их не дублируют и не ломают).
+7. **Размеры для бюджета основной спеки** (§2 п.5, §3.3, контекст пре-чек-спеки):
+   - devel-набор (weakdeps off): **3.60 GiB** installed (29 пакета);
+   - runtime-набор: **~1.0 GiB download** / **~2.6 GiB** image c driver userspace
+     из `nvidia-xorg:610.43.03` (`cuda-precheck-libs:tmp` = 2.63 GB);
+   - vs старые redist-образы: `nvidia-cuda-devel:13.2` **8.72 ГБ**,
+     `nvidia-cuda-libs:13.2` **5.3 ГБ**, `llama-cpp-cuda:13.2` **5.46 ГБ** —
+     дnf-вариант существенно меньше.
+
+## 8. Throwaway-инвентарь (удалён)
+
+Cleanup выполнен в Task 6 (`CRE=podman-remote`). Все 5 throwaway-образов
+`cuda-precheck-*:tmp` + стедж — удалены, подтверждено отсутствием.
+
+**Образы** (размер до удаления; `nccl2` добавлен в доп. пробе §5):
+
+| ID | Тег | Размер |
+|---|---|---|
+| `40b88382905e` | `cuda-precheck-nccl2:tmp` | 5.36 GB |
+| `529faf73b3ac` | `cuda-precheck-nccl:tmp` | 5.34 GB |
+| `f397ab43b7f3` | `cuda-precheck-libs:tmp` | 2.63 GB |
+| `2b580f62fab9` | `cuda-precheck-devel-weak:tmp` | 4.98 GB |
+| `ee8106ecc3ce` | `cuda-precheck-devel:tmp` | 4.97 GB |
+
+Удаление: `$CRE rmi <тег>` по одному, каждый `exit=0`
+(`cuda-precheck-devel:tmp` — `Untagged`, его слои — общая база для
+`devel-weak`/`nccl`/`nccl2` — GC'нулись при удалении последних ссылок).
+Проверка после: `$CRE images | grep cuda-precheck` → нет совпадений.
+
+**Стедж на хосте:** `/run/host/tmp/cuda-precheck` (580 M, ~50 файлов: логи
+сборок/проб, `*.containerfile`, `nevra-inventory.txt`, `repo-index.html`,
+`cuda-fedora44.repo`, `nvidia-gpg.asc`, `hello.cu`/`hello`, `hello_dyn.cu`/
+`hello_dyn`, клоны `llama/`, `nccl15/`, `nccl16/`). Удаление: `rm -rf
+/run/host/tmp/cuda-precheck` (литеральный путь, допустимо без safe-rm по
+rm-rf-guard), `exit=0`. Проверка после: каталог отсутствует, в
+`/run/host/tmp` cuda-записей нет.
