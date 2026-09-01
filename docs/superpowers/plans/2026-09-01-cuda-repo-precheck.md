@@ -334,7 +334,7 @@ int main() {
     cudaMallocManaged(&b, n * sizeof(float));
     cudaMallocManaged(&c, n * sizeof(float));
     for (int i = 0; i < n; i++) { a[i] = i; b[i] = 2.0f * i; }
-    add(n / 256, 256, a, b, c, n);
+    add<<<n / 256, 256>>>(a, b, c, n);
     cudaDeviceSynchronize();
     float expect = 0;
     for (int i = 0; i < n; i++) expect += 3.0f * i;
@@ -352,7 +352,7 @@ EOF
 CRE=podman; [ -f /run/.containerenv ] && CRE=podman-remote
 S=/run/host/tmp/cuda-precheck
 $CRE run --rm -v /tmp/cuda-precheck:/s:z cuda-precheck-devel:tmp \
-  bash -c 'nvcc -ccbin g++-15 -arch=sm_86 -o /s/hello /s/hello.cu && /s/hello --help 2>&1 | head -1 || true'
+  bash -c '/usr/local/cuda/bin/nvcc -ccbin g++-15 -arch=sm_86 -o /s/hello /s/hello.cu'
 file $S/hello
 ```
 
@@ -483,7 +483,7 @@ $CRE run --rm -v /tmp/cuda-precheck:/s:z cuda-precheck-devel:tmp bash -c '
     NVCC_GENCODE="-gencode=arch=compute_86,code=sm_86"
   ls -la build/lib/libnccl.so*
 ' 2>&1 | tee $S/nccl16.log | tail -20
-echo "exit=$?"
+echo "exit=${PIPESTATUS[0]}"
 ```
 
 Expected: либо сборка (факт: g++16 работает — рекомендация для
@@ -534,6 +534,9 @@ FROM cuda-precheck-devel:tmp
 COPY nccl15/build/lib /usr/local/cuda-13.3/lib64-nccl
 COPY nccl15/build/include /usr/local/cuda-13.3/include-nccl
 RUN set -euxo pipefail ; \
+  dnf -y --setopt=install_weak_deps=False install \
+    cuda-driver-devel-13-3-13.3.29-1.x86_64 \
+  && dnf clean all ; \
   cp -aP /usr/local/cuda-13.3/lib64-nccl/libnccl* /usr/local/cuda-13.3/lib64/ && \
   cp -a /usr/local/cuda-13.3/include-nccl/nccl.h /usr/local/cuda-13.3/include-nccl/nccl_device.h /usr/local/cuda-13.3/include-nccl/nccl_device /usr/local/cuda-13.3/include/ && \
   rm -rf /usr/local/cuda-13.3/lib64-nccl /usr/local/cuda-13.3/include-nccl
@@ -580,8 +583,13 @@ $CRE run --rm -v /tmp/cuda-precheck:/s:z cuda-precheck-nccl:tmp bash -c '
 ```
 
 Expected: configure успешен; в выводе cmake — версия CUDA toolkit
-(13.3.1) и nvcc; NCCL определён (NCCL_ROOT). При ошибке детекции —
-точный текст в §5 (корректировка путей для основной спеки).
+(13.3.73) и nvcc; NCCL определён (NCCL_ROOT). Дефект плана, исправлен
+при исполнении: configure проваливается на Generate
+(`CUDA::cuda_driver` не найден), т.к. 7 NEVRA devel-набора не несут
+`libcuda.so`-стаб; в containerfile выше добавлен
+`cuda-driver-devel-13-3-13.3.29-1` (стаб), после чего configure
+проходит. При иной ошибке детекции — точный текст в §5
+(корректировка путей для основной спеки).
 
 - [ ] **Step 4: Отчёт §5**
 
