@@ -336,7 +336,7 @@ launch_b2() {
     -v /var/local/llm/gguf-models:/models \
     -p 8080:8080 \
     -e LLAMA_LOG_TIMESTAMPS=1 "$@" \
-    --entrypoint /opt/cuda/bin/compute-sanitizer \
+    --entrypoint /usr/local/cuda/bin/compute-sanitizer \
     "$DEV_IMG" \
       --tool memcheck --launch-timeout 1800 --error-exitcode 42 --print-limit 256 \
       /app/llama-server --port 8080 --host 0.0.0.0 \

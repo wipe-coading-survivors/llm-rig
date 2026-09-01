@@ -1,40 +1,28 @@
 ARG BASE_IMAGE
-ARG CUDA_VER
-ARG CUDA_DEVEL_IMAGE
 ARG NVIDIA_XORG_IMAGE
+ARG CUDA_REPO_BASE
 
-# cuda: nvidia-cuda-devel (CUDA toolkit), injected by Makefile
-FROM ${CUDA_DEVEL_IMAGE} as cuda
-
-# libs: nvidia-xorg (driver user-space libs), injected by Makefile
-FROM ${NVIDIA_XORG_IMAGE} as libs
+# drv: nvidia-xorg (driver user-space libs), injected by Makefile
+FROM ${NVIDIA_XORG_IMAGE} as drv
 
 # base: nvidia-base (fedora-minimal + dnf), injected by Makefile
 FROM ${BASE_IMAGE}
 
-ARG CUDA_VER
+ARG CUDA_REPO_BASE
 ARG NVIDIA_XORG_IMAGE_ID
-ARG CUDA_DEVEL_IMAGE_ID
+ARG CUDA_PKG_SERIES
+ARG CUDA_RUNTIME_SET
 
-#COPY --from=libs /opt/nvidia/ /opt/nvidia/
-#COPY --from=libs /usr/lib64/libcuda* /usr/lib64/
-#COPY --from=libs /usr/lib64/libnvidia* /usr/lib64/
-
-#COPY --from=cuda /opt/ /opt/
-
-RUN --mount=type=bind,from=libs,source=/,target=/mnt/libs \
-    --mount=type=bind,from=cuda,source=/,target=/mnt/cuda \
-  set -exuo pipefail ; \
-  tar -C /mnt/libs -c opt/nvidia | tar -C / -xv && \
-  tar -C /mnt/libs/usr/lib64 -c $(cd /mnt/libs/usr/lib64 ; ls lib{cuda,nvidia}*) | tar -C /usr/lib64 -xv && \
-  mkdir -p /opt/cuda-${CUDA_VER}/lib64 && \
-  tar -C /mnt/cuda/opt/cuda-${CUDA_VER}/targets/x86_64-linux/lib -c . | tar -C /opt/cuda-${CUDA_VER}/lib64 -xv && \
-  ln -s /opt/cuda{-${CUDA_VER},} && \
-  echo /opt/cuda/lib64 > /opt/cuda/20_local.conf && \
+RUN \
+  --mount=type=bind,from=drv,source=/,target=/mnt/drv \
+  set -euxo pipefail ; \
+  curl -SLo /etc/yum.repos.d/cuda-fedora44.repo $CUDA_REPO_BASE/cuda-fedora44.repo ; \
+  cp -arv /mnt/drv/opt/nvidia/ /opt/nvidia/ && \
+  cp -av /mnt/drv/usr/lib64/libcuda* /usr/lib64/ && \
+  cp -av /mnt/drv/usr/lib64/libnvidia* /usr/lib64/ && \
   ln -s /opt/nvidia/10_local.conf /etc/ld.so.conf.d/ && \
-  ln -s /opt/cuda/20_local.conf /etc/ld.so.conf.d/ && \
-  ldconfig && \
-  dnf install -y \
-    numactl \
+  dnf install -y --setopt=install_weak_deps=False $CUDA_RUNTIME_SET numactl \
   && \
-  dnf clean all
+  dnf clean all && \
+  ldconfig && \
+  rpm -qa | grep -- "-${CUDA_PKG_SERIES}-" | sort > /usr/local/cuda-installed.txt

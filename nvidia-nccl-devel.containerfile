@@ -4,7 +4,7 @@ ARG CUDA_DEVEL_IMAGE
 FROM ${CUDA_DEVEL_IMAGE}
 
 ARG CUDA_VER
-ARG NVCC=/opt/cuda/bin/nvcc
+ARG NVCC=/usr/local/cuda/bin/nvcc
 ARG CUDA_ARCH
 ARG GCC_VER
 
@@ -27,9 +27,9 @@ RUN \
     CUDA_HOME=${cuda_home} \
     CXX=g++-${GCC_VER} \
     NVCC_GENCODE="-gencode=arch=compute_${CUDA_ARCH},code=sm_${CUDA_ARCH}" && \
-  cp -aP build/lib/libnccl* /opt/cuda-${CUDA_VER}/lib64/ && \
-  cp -a build/include/nccl.h build/include/nccl_device.h /opt/cuda-${CUDA_VER}/include/ && \
-  cp -a build/include/nccl_device /opt/cuda-${CUDA_VER}/include/ && \
-  cp -a build/bin/ncclras build/bin/ncclparam /opt/cuda-${CUDA_VER}/bin/ && \
+  cp -aP build/lib/libnccl* /usr/local/cuda-${CUDA_VER}/lib64/ && \
+  cp -a build/include/nccl.h build/include/nccl_device.h /usr/local/cuda-${CUDA_VER}/include/ && \
+  cp -a build/include/nccl_device /usr/local/cuda-${CUDA_VER}/include/ && \
+  cp -a build/bin/ncclras build/bin/ncclparam /usr/local/cuda-${CUDA_VER}/bin/ && \
   ldconfig && \
   ldconfig -p | grep -q libnccl

@@ -15,17 +15,14 @@ BUILDER_HOST	?= $(shell h=$$(hostname); h=$${h/toolbx/$$(awk -F\" '/name=/ { pri
 #KVER		?= 6.4.7-200.fc38.x86_64
 KVER		?= $(shell uname -r)
 NVIDIA_DRV_VER	?= 610.43.03
-NVIDIA_CUDA_118	?= https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run
-NVIDIA_CUDA_120 ?= https://developer.download.nvidia.com/compute/cuda/12.0.1/local_installers/cuda_12.0.1_525.85.12_linux.run
-NVIDIA_CUDA_121 ?= https://developer.download.nvidia.com/compute/cuda/12.1.0/local_installers/cuda_12.1.0_530.30.02_linux.run
-NVIDIA_CUDA_122 ?= https://developer.download.nvidia.com/compute/cuda/12.2.2/local_installers/cuda_12.2.2_535.104.05_linux.run
-NVIDIA_CUDA_132 ?= https://developer.download.nvidia.com/compute/cuda/13.2.2/local_installers/cuda_13.2.2_595.71.05_linux.run
-#NVIDIA_CUDA_VER	?= 11.8
-NVIDIA_CUDA_VER	?= 13.2
+NVIDIA_CUDA_VER	?= 13.3
 NVIDIA_DRV_RUN_URL = https://download.nvidia.com/XFree86/Linux-x86_64/$(NVIDIA_DRV_VER)/NVIDIA-Linux-x86_64-$(NVIDIA_DRV_VER)-no-compat32.run
 LACT_VER	?= v0.10.0
 LACT_URL	?= https://github.com/ilya-zlobintsev/LACT/releases/download/$(LACT_VER)/lact-headless-0.10.0-0.x86_64.fedora-44.rpm
-NVIDIA_CUDA_URL ?= $(NVIDIA_CUDA_132)
+CUDA_REPO_BASE	?= https://developer.download.nvidia.com/compute/cuda/repos/fedora44/x86_64
+CUDA_PKG_SERIES	?= $(subst .,-,$(NVIDIA_CUDA_VER))
+CUDA_DEVEL_SET	?= cuda-minimal-build-$(CUDA_PKG_SERIES) cuda-driver-devel-$(CUDA_PKG_SERIES) cuda-sanitizer-$(CUDA_PKG_SERIES) libcublas-devel-$(CUDA_PKG_SERIES) libcufft-devel-$(CUDA_PKG_SERIES) libcurand-devel-$(CUDA_PKG_SERIES) libcusolver-devel-$(CUDA_PKG_SERIES) libcusparse-devel-$(CUDA_PKG_SERIES) libnvjitlink-devel-$(CUDA_PKG_SERIES)
+CUDA_RUNTIME_SET ?= cuda-cudart-$(CUDA_PKG_SERIES) libcublas-$(CUDA_PKG_SERIES) libcufft-$(CUDA_PKG_SERIES) libcurand-$(CUDA_PKG_SERIES) libcusolver-$(CUDA_PKG_SERIES) libcusparse-$(CUDA_PKG_SERIES) libnvfatbin-$(CUDA_PKG_SERIES) libnvjitlink-$(CUDA_PKG_SERIES)
 
 NVIDIA_OSS_KMOD	= open-gpu-kernel-modules
 NVIDIA_OSS_KMOD_URL ?= https://github.com/NVIDIA/open-gpu-kernel-modules.git
@@ -40,7 +37,7 @@ NCCL_REPO   ?= https://github.com/NVIDIA/nccl.git
 
 CUDA_ARCH	?= 86
 GCC_VER		?= 15
-NVCC		?= /opt/cuda/bin/nvcc
+NVCC		?= /usr/local/cuda/bin/nvcc
 LLAMA_HOST ?= 127.0.0.1
 LLM_NFS_SERVER ?= 127.0.0.1
 LLAMA_PORT ?= 8080
@@ -51,7 +48,6 @@ NVIDIA_BASE_IMAGE      = nvidia-base:$(BASE_IMAGE_TAG)
 KERNEL_DEVEL_IMAGE     = kernel-devel:$(KVER)
 KERNEL_REDIST_IMAGE    = kernel-redist:$(KVER)
 NVIDIA_REDIST_DRV_IMG  = nvidia-redist-drv:$(NVIDIA_DRV_VER)
-NVIDIA_REDIST_CUDA_IMG = nvidia-redist-cuda:$(NVIDIA_CUDA_VER)
 NVIDIA_XORG_IMAGE      = nvidia-xorg:$(NVIDIA_DRV_VER)
 LACT_REDIST_IMAGE = lact-redist:$(LACT_VER)
 NVIDIA_LACT_IMAGE = nvidia-lact-$(NVIDIA_DRV_VER):$(LACT_VER)
@@ -186,30 +182,6 @@ nvidia-redist-drv: _empty
 	  -t $(NVIDIA_REDIST_DRV_IMG) \
 	  empty
 
-nvidia-redist-cuda: _empty
-	@status=$$(CRE=$(CRE) scripts/redist-check.sh $(if $(FORCE),--force) $(NVIDIA_CUDA_URL) $(NVIDIA_REDIST_CUDA_IMG) com.nvidia/cuda.redist) || { \
-	  if [ -z "$(FORCE)" ] && $(CRE) image exists $(NVIDIA_REDIST_CUDA_IMG) ; then \
-	  echo "WARN: remote unreachable, using existing $(NVIDIA_REDIST_CUDA_IMG)" ; \
-	  exit 0 ; \
-	  fi ; \
-	  echo "ERROR: remote unreachable (no size/etag for LABELs) and no usable local image $(NVIDIA_REDIST_CUDA_IMG)" >&2 ; \
-	  exit 1 ; \
-	  } ; \
-	  case $$status in \
-	  up-to-date) \
-	  echo "$(NVIDIA_REDIST_CUDA_IMG) up to date" ; \
-	  exit 0 ;; \
-	  esac ; \
-	  set -- $$status ; shift ; \
-	  $(CRE) build \
-	  --build-arg CUDA_VER=$(NVIDIA_CUDA_VER) \
-	  --build-arg CUDA_URL=$(NVIDIA_CUDA_URL) \
-	  --build-arg REDIST_SIZE=$$1 \
-	  --build-arg REDIST_ETAG=$$2 \
-	  -f $@.containerfile \
-	  -t $(NVIDIA_REDIST_CUDA_IMG) \
-	  empty
-
 lact-redist: _empty
 	@status=$$(CRE=$(CRE) scripts/redist-check.sh $(if $(FORCE),--force) $(LACT_URL) $(LACT_REDIST_IMAGE) com.nvidia/lact.redist) || { \
 	  if [ -z "$(FORCE)" ] && $(CRE) image exists $(LACT_REDIST_IMAGE) ; then \
@@ -264,30 +236,28 @@ nvidia-lact-autoswitch: nvidia-lact
 	  -t $(NVIDIA_LACT_AUTOSWITCH_IMAGE) \
 	  resources
 
-nvidia-cuda-devel: nvidia-base nvidia-xorg nvidia-redist-cuda
+nvidia-cuda-devel: nvidia-base nvidia-xorg
 	xid=$$($(CRE) inspect --format "{{.Id}}" $(NVIDIA_XORG_IMAGE)) || exit 1 ; \
-	  cid=$$($(CRE) inspect --format "{{.Id}}" $(NVIDIA_REDIST_CUDA_IMG)) || exit 1 ; \
 	  $(CRE) build \
 	  --build-arg BASE_IMAGE=$(NVIDIA_BASE_IMAGE) \
 	  --build-arg NVIDIA_XORG_IMAGE=$(NVIDIA_XORG_IMAGE) \
-	  --build-arg CUDA_REDIST_IMAGE=$(NVIDIA_REDIST_CUDA_IMG) \
 	  --build-arg NVIDIA_XORG_IMAGE_ID=$$xid \
-	  --build-arg CUDA_REDIST_IMAGE_ID=$$cid \
-	  --build-arg CUDA_VER=$(NVIDIA_CUDA_VER) \
+	  --build-arg CUDA_REPO_BASE=$(CUDA_REPO_BASE) \
+	  --build-arg CUDA_PKG_SERIES=$(CUDA_PKG_SERIES) \
+	  --build-arg "CUDA_DEVEL_SET=$(CUDA_DEVEL_SET)" \
 	  -f $@.containerfile \
 	  -t $(NVIDIA_CUDA_DEVEL_IMG) \
 	  empty
 
-nvidia-cuda-libs: nvidia-cuda-devel nvidia-xorg nvidia-base
+nvidia-cuda-libs: nvidia-xorg nvidia-base
 	xid=$$($(CRE) inspect --format "{{.Id}}" $(NVIDIA_XORG_IMAGE)) || exit 1 ; \
-	  cdid=$$($(CRE) inspect --format "{{.Id}}" $(NVIDIA_CUDA_DEVEL_IMG)) || exit 1 ; \
 	  $(CRE) build \
 	  --build-arg BASE_IMAGE=$(NVIDIA_BASE_IMAGE) \
-	  --build-arg CUDA_DEVEL_IMAGE=$(NVIDIA_CUDA_DEVEL_IMG) \
 	  --build-arg NVIDIA_XORG_IMAGE=$(NVIDIA_XORG_IMAGE) \
 	  --build-arg NVIDIA_XORG_IMAGE_ID=$$xid \
-	  --build-arg CUDA_DEVEL_IMAGE_ID=$$cdid \
-	  --build-arg CUDA_VER=$(NVIDIA_CUDA_VER) \
+	  --build-arg CUDA_REPO_BASE=$(CUDA_REPO_BASE) \
+	  --build-arg CUDA_PKG_SERIES=$(CUDA_PKG_SERIES) \
+	  --build-arg "CUDA_RUNTIME_SET=$(CUDA_RUNTIME_SET)" \
 	  -f $@.containerfile \
 	  -t $(NVIDIA_CUDA_LIBS_IMG) \
 	  empty

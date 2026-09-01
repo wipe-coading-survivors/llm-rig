@@ -14,3 +14,11 @@ REPO_BASE_URL = http://mirror.example.com
 
 LLAMA_HOST = 192.0.2.1
 LLM_NFS_SERVER = 192.0.2.2
+
+# CUDA toolkit (этап 24): по умолчанию dnf ставит пакеты серии
+# NVIDIA_CUDA_VER (самый свежий release серии). Точный патч —
+# override в local.mk: список полных NEVRA (без суффикса .rpm;
+# фактически установленные NEVRA собранного образа — в
+# /usr/local/cuda-installed.txt):
+# CUDA_DEVEL_SET = cuda-minimal-build-13-3-<ver>-<rel>.x86_64 ...
+# CUDA_RUNTIME_SET = cuda-cudart-13-3-<ver>-<rel>.x86_64 ...

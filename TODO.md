@@ -42,9 +42,9 @@ LLM (NVIDIA): модули ядра, драйвер, OC/авто-свитч, р�
       runtime-сет на GPU, пробы сборки NCCL/llama на 13.3.1 (отчёт)
 - [x] Основная спека (по фактам пре-чека,
       `docs/superpowers/specs/2026-09-01-cuda-repo-design.md`, ревью OK)
-- [ ] Реализация: cuda-devel/cuda-libs через dnf (точные NEVRA),
-      убрать `nvidia-redist-cuda`, `/opt/cuda` → `/usr/local/cuda`,
-      Makefile, тесты
+- [x] Реализация: cuda-devel/cuda-libs через dnf (имена серии,
+      опция точных NEVRA), убрать `nvidia-redist-cuda`,
+      `/opt/cuda` → `/usr/local/cuda`, Makefile, тесты
 - [ ] Live-окно: пересборка всей цепи + прогон llama-server
 
 ## Перенесено из архива (старая нумерация)
