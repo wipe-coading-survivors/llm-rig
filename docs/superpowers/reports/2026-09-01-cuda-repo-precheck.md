@@ -413,3 +413,60 @@ runtime-пакетов.
   cufft БПФ, curand) отработали на GPU с верным ответом (exit 0). Единственный
   не подгруженный этим бинарником `libnvfatbin.so.13` установлен и доступен в
   ld-кэше — динамический потребитель, которому он нужен, его найдёт.
+
+## 4. Сборка NCCL v2.31.2-1 на 13.3.1 (пп.7–8)
+
+NCCL `v2.31.2-1` (тег `NCCL_REF` из `Makefile`, commit `7b83616`) клонирован
+в стедж (`nccl15`/`nccl16`, `--depth 1`) и собран дважды в
+`cuda-precheck-devel:tmp`; команда сборки — дословно из
+`nvidia-nccl-devel.containerfile` (prod-значения `CUDA_ARCH=86`):
+`make -j$(nproc) src.build CUDA_HOME=/usr/local/cuda-13.3
+NVCC_GENCODE="-gencode=arch=compute_86,code=sm_86"` (`nproc=28`). Общие
+факты обеих сборок: nvcc `V13.3.73` (release 13.3); `CXX` — `g++-15
+(GCC) 15.3.1 20260722 (Red Hat 15.3.1-1)` в п.7 и дефолт F44 `g++ (GCC)
+16.2.1 20260819 (Red Hat 16.2.1-2)` в п.8. Логи (стедж): `nccl15.log`
+(успех), `nccl16.log` (ошибка).
+
+- **g++15 (п.7): успех.** `CXX=g++-15` — базовый эквивалент прод-стадии
+  (как в прод-цепи на 13.2). `exit=0`, время сборки **132 s (~2m12s)**.
+  Артефакты на месте: `build/lib/libnccl.so` → `libnccl.so.2` →
+  `libnccl.so.2.31.2` (57 976 256 B), `build/lib/libnccl_static.a`
+  (125 034 122 B), `build/include/nccl.h` (44 549 B), `build/bin/ncclparam`.
+  Конец `nccl15.log`:
+
+  ```
+  Linking    libnccl.so.2.31.2                   > /s/nccl15/build/lib/libnccl.so.2.31.2
+  Archiving  libnccl_static.a                    > /s/nccl15/build/lib/libnccl_static.a
+  Linking    ncclparam                           > /s/nccl15/build/bin/ncclparam
+  -rw-r--r--. 1 root root      44549 сен  1 18:30 build/include/nccl.h
+  lrwxrwxrwx. 1 root root         12 ... libnccl.so -> libnccl.so.2
+  lrwxrwxrwx. 1 root root         17 ... libnccl.so.2 -> libnccl.so.2.31.2
+  -rwxr-xr-x. 1 root root  57976256 ... libnccl.so.2.31.2
+  ```
+
+- **g++16 (п.8): ошибка (fail-loud на первом `.cu`).** Без `CXX`-override —
+  дефолт F44 `g++ (GCC) 16.2.1 20260819 (Red Hat 16.2.1-2)`. `exit=2`
+  (make `Error 2`); упала за **12 s**, не дошла до линковки
+  (`build/lib/` пуст, `libnccl.so` **не** собрано). nvcc 13.3.1 отклоняет
+  host-компилятор новее 15 — `#error` в `host_config.h` на самой первой
+  компиляции `.cu` (дословно из `nccl16.log`):
+
+  ```
+  In file included from /usr/local/cuda-13.3/bin/../targets/x86_64-linux/include/cuda_runtime.h:82,
+                   from <command-line>:
+  /usr/local/cuda-13.3/bin/../targets/x86_64-linux/include/crt/host_config.h:137:2: error: #error -- unsupported GNU version! gcc versions later than 15 are not supported! The nvcc flag '-allow-unsupported-compiler' can be used to override this version check; however, using an unsupported host compiler may cause compilation failure or incorrect run time execution. Use at your own risk.
+  make: *** [Makefile:45: src.build] Error 2
+  ```
+
+  Факт: **CUDA 13.3.1 поддерживает gcc не новее 15** (ровно как и 13.2);
+  дефолтный g++16 Fedora 44 принимается nvcc только через
+  `-allow-unsupported-compiler` (помечено «use at your own risk» — не для
+  прод).
+
+- **Вывод для GCC_VER: остаётся `15`** (не переворачивать на 16).
+  `GCC_VER ?= 15` в `Makefile` — единственный рабочий вариант на 13.3.1:
+  containerfile уже явным образом ставит `gcc${GCC_VER}{,-c++}` и шлёт
+  `CXX=g++-${GCC_VER}`. Переворот на дефолтный 16 сломал бы сборку NCCL (и
+  любой CUDA-кода) сразу на первом `.cu`. При миграции 13.2 → 13.3.1 пин
+  g++15 **не меняется** — он и есть причина, по которой прод-цепь
+  собирается.
