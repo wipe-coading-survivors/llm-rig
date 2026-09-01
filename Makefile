@@ -68,7 +68,6 @@ LLAMA_CPP_IMAGE = $(LLAMA_CPP_NAME):$(NVIDIA_CUDA_VER)
 LLAMA_DEBUG_IMAGE = $(LLAMA_CPP_NAME)-debug:$(NVIDIA_CUDA_VER)
 NVIDIA_KMOD_IMAGE   = nvidia-kmod-$(NVIDIA_DRV_VER):$(KVER)
 
-REPO_BASE_URL ?= http://mirror.getpods.ru
 KOJI_BASE_URL ?= https://kojipkgs.fedoraproject.org
 
 clean:

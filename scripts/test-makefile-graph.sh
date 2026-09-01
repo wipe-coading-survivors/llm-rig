@@ -65,6 +65,7 @@ curl -fsS "$lact_url" > /dev/null
 
 # --- fake koji layout (kernel + kernel-headers, for kernel-redist tests) ---
 koji_url="http://127.0.0.1:$port/koji"
+repo_base_url="http://127.0.0.1:$port/repo-base"
 kver_test=7.1.4-200.fc44.x86_64
 kmkdir=$tmp/koji/packages/kernel/7.1.4/200.fc44/x86_64
 mkdir -p "$kmkdir"
@@ -250,10 +251,10 @@ for t in nvidia-base kernel-devel kernel-redist kmod-oss kmod nvidia-redist-drv 
 done
 
 # --- 2. nvidia-base ---
-make_target nvidia-base
+make_target nvidia-base REPO_BASE_URL="$repo_base_url"
 expect_make_rc "nvidia-base rc=0" 0
 expect_sequence "nvidia-base sequence" "nvidia-base.containerfile"
-expect_final_build_contains "nvidia-base REPO_BASE_URL" "--build-arg REPO_BASE_URL=http://mirror.getpods.ru"
+expect_final_build_contains "nvidia-base REPO_BASE_URL" "--build-arg REPO_BASE_URL=$repo_base_url"
 expect_final_build_contains "nvidia-base BASE_IMAGE" "--build-arg BASE_IMAGE=registry.fedoraproject.org/fedora-minimal:44"
 expect_final_build_contains "nvidia-base tag" "-t nvidia-base:44"
 expect_no_from "nvidia-base no --from"
