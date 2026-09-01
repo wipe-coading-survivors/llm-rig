@@ -22,9 +22,7 @@ trap '
 # --- local HTTP server for redist URLs (size/etag for redist-check.sh) ---
 port=18767
 drv_url="http://127.0.0.1:$port/driver.run"
-cuda_url="http://127.0.0.1:$port/cuda.run"
 printf 'test-driver\n' > "$tmp/driver.run"
-printf 'test-cuda\n' > "$tmp/cuda.run"
 lact_url="http://127.0.0.1:$port/lact.rpm"
 printf 'test-lact\n' > "$tmp/lact.rpm"
 
@@ -60,7 +58,6 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
     sleep 0.1
 done
 curl -fsS "$drv_url" > /dev/null
-curl -fsS "$cuda_url" > /dev/null
 curl -fsS "$lact_url" > /dev/null
 
 # --- fake koji layout (kernel + kernel-headers, for kernel-redist tests) ---
@@ -179,7 +176,7 @@ make_target() {
     rc=0
     make_out=$(make -C "$repo_root" -s "$target" CRE="$tmp/cre" \
         NVIDIA_DRV_VER=test NVIDIA_CUDA_VER=test KVER=test-kver BUILDER_HOST=test-host \
-        NVIDIA_DRV_RUN_URL="$drv_url" NVIDIA_CUDA_URL="$cuda_url" \
+        NVIDIA_DRV_RUN_URL="$drv_url" \
         KOJI_BASE_URL="$koji_url" \
         "$@" 2>&1) || rc=$?
     make_rc=$rc
@@ -236,13 +233,13 @@ expect_no_from() {
 }
 
 # --- 1. make -n: syntax of all active targets ---
-for t in nvidia-base kernel-devel kernel-redist kmod-oss kmod nvidia-redist-drv nvidia-redist-cuda lact-redist \
+for t in nvidia-base kernel-devel kernel-redist kmod-oss kmod nvidia-redist-drv lact-redist \
          nvidia-xorg nvidia-cuda-devel nvidia-cuda-libs nvidia-nccl-devel \
           nvidia-nccl-libs nvidia-lact nvidia-lact-autoswitch nvidia-nccl llama-cpp-cuda llama-cpp-cuda-debug clean systemd ; do
     rc=0
     make -C "$repo_root" -n -s "$t" CRE="$tmp/cre" \
         NVIDIA_DRV_VER=test NVIDIA_CUDA_VER=test KVER=test-kver BUILDER_HOST=test-host \
-        NVIDIA_DRV_RUN_URL="$drv_url" NVIDIA_CUDA_URL="$cuda_url" > /dev/null 2>&1 || rc=$?
+        NVIDIA_DRV_RUN_URL="$drv_url" > /dev/null 2>&1 || rc=$?
     if [ "$rc" -eq 0 ]; then
         ok "make -n $t"
     else
@@ -381,27 +378,26 @@ expect_no_from "nvidia-xorg no --from"
 # --- 7. nvidia-cuda-devel ---
 make_target nvidia-cuda-devel
 expect_make_rc "nvidia-cuda-devel rc=0" 0
-expect_sequence "nvidia-cuda-devel sequence" "nvidia-base.containerfile nvidia-redist-drv.containerfile nvidia-xorg.containerfile nvidia-redist-cuda.containerfile nvidia-cuda-devel.containerfile"
+expect_sequence "nvidia-cuda-devel sequence" "nvidia-base.containerfile nvidia-redist-drv.containerfile nvidia-xorg.containerfile nvidia-cuda-devel.containerfile"
 expect_final_build_contains "nvidia-cuda-devel BASE_IMAGE" "--build-arg BASE_IMAGE=nvidia-base:44"
 expect_final_build_contains "nvidia-cuda-devel NVIDIA_XORG_IMAGE" "--build-arg NVIDIA_XORG_IMAGE=nvidia-xorg:test"
-expect_final_build_contains "nvidia-cuda-devel CUDA_REDIST_IMAGE" "--build-arg CUDA_REDIST_IMAGE=nvidia-redist-cuda:test"
 expect_final_build_contains "nvidia-cuda-devel NVIDIA_XORG_IMAGE_ID" "--build-arg NVIDIA_XORG_IMAGE_ID=sha256:fake-nvidia-xorg-test"
-expect_final_build_contains "nvidia-cuda-devel CUDA_REDIST_IMAGE_ID" "--build-arg CUDA_REDIST_IMAGE_ID=sha256:fake-nvidia-redist-cuda-test"
-expect_final_build_contains "nvidia-cuda-devel CUDA_VER" "--build-arg CUDA_VER=test"
+expect_final_build_contains "nvidia-cuda-devel CUDA_REPO_BASE" "--build-arg CUDA_REPO_BASE=https://developer.download.nvidia.com/compute/cuda/repos/fedora44/x86_64"
+expect_final_build_contains "nvidia-cuda-devel CUDA_PKG_SERIES" "--build-arg CUDA_PKG_SERIES=test"
+expect_final_build_contains "nvidia-cuda-devel CUDA_DEVEL_SET" "--build-arg CUDA_DEVEL_SET=cuda-minimal-build-test"
 expect_final_build_contains "nvidia-cuda-devel tag" "-t nvidia-cuda-devel:test"
-expect_log_contains "nvidia-cuda-devel redist-cuda via variables" "-t nvidia-redist-cuda:test"
 expect_no_from "nvidia-cuda-devel no --from"
 
 # --- 8. nvidia-cuda-libs ---
 make_target nvidia-cuda-libs
 expect_make_rc "nvidia-cuda-libs rc=0" 0
-expect_sequence "nvidia-cuda-libs sequence" "nvidia-base.containerfile nvidia-redist-drv.containerfile nvidia-xorg.containerfile nvidia-redist-cuda.containerfile nvidia-cuda-devel.containerfile nvidia-cuda-libs.containerfile"
+expect_sequence "nvidia-cuda-libs sequence" "nvidia-base.containerfile nvidia-redist-drv.containerfile nvidia-xorg.containerfile nvidia-cuda-libs.containerfile"
 expect_final_build_contains "nvidia-cuda-libs BASE_IMAGE" "--build-arg BASE_IMAGE=nvidia-base:44"
-expect_final_build_contains "nvidia-cuda-libs CUDA_DEVEL_IMAGE" "--build-arg CUDA_DEVEL_IMAGE=nvidia-cuda-devel:test"
 expect_final_build_contains "nvidia-cuda-libs NVIDIA_XORG_IMAGE" "--build-arg NVIDIA_XORG_IMAGE=nvidia-xorg:test"
 expect_final_build_contains "nvidia-cuda-libs NVIDIA_XORG_IMAGE_ID" "--build-arg NVIDIA_XORG_IMAGE_ID=sha256:fake-nvidia-xorg-test"
-expect_final_build_contains "nvidia-cuda-libs CUDA_DEVEL_IMAGE_ID" "--build-arg CUDA_DEVEL_IMAGE_ID=sha256:fake-nvidia-cuda-devel-test"
-expect_final_build_contains "nvidia-cuda-libs CUDA_VER" "--build-arg CUDA_VER=test"
+expect_final_build_contains "nvidia-cuda-libs CUDA_REPO_BASE" "--build-arg CUDA_REPO_BASE=https://developer.download.nvidia.com/compute/cuda/repos/fedora44/x86_64"
+expect_final_build_contains "nvidia-cuda-libs CUDA_PKG_SERIES" "--build-arg CUDA_PKG_SERIES=test"
+expect_final_build_contains "nvidia-cuda-libs CUDA_RUNTIME_SET" "--build-arg CUDA_RUNTIME_SET=cuda-cudart-test"
 expect_final_build_contains "nvidia-cuda-libs tag" "-t nvidia-cuda-libs:test"
 expect_no_from "nvidia-cuda-libs no --from"
 
@@ -409,10 +405,10 @@ expect_no_from "nvidia-cuda-libs no --from"
 make_target llama-cpp-cuda LLAMA_CPP="$tmp/llama-cpp" \
     NCCL="$tmp/nccl" NCCL_REPO="$tmp/nccl-repo" NCCL_REF=test-nccl
 expect_make_rc "llama-cpp-cuda (pull) rc=0" 0
-expect_sequence "llama-cpp-cuda sequence" "nvidia-base.containerfile nvidia-redist-drv.containerfile nvidia-xorg.containerfile nvidia-redist-cuda.containerfile nvidia-cuda-devel.containerfile nvidia-nccl-devel.containerfile nvidia-cuda-libs.containerfile nvidia-nccl-libs.containerfile llama-cpp-cuda.containerfile"
+expect_sequence "llama-cpp-cuda sequence" "nvidia-base.containerfile nvidia-redist-drv.containerfile nvidia-xorg.containerfile nvidia-cuda-devel.containerfile nvidia-nccl-devel.containerfile nvidia-cuda-libs.containerfile nvidia-nccl-libs.containerfile llama-cpp-cuda.containerfile"
 expect_final_build_contains "llama-cpp-cuda BASE_IMAGE" "--build-arg BASE_IMAGE=nvidia-nccl-libs-cuda-test:test-nccl"
 expect_final_build_contains "llama-cpp-cuda CUDA_DEVEL_IMAGE" "--build-arg CUDA_DEVEL_IMAGE=nvidia-nccl-devel-cuda-test:test-nccl"
-expect_final_build_contains "llama-cpp-cuda NVCC" "--build-arg NVCC=/opt/cuda/bin/nvcc"
+expect_final_build_contains "llama-cpp-cuda NVCC" "--build-arg NVCC=/usr/local/cuda/bin/nvcc"
 expect_final_build_contains "llama-cpp-cuda CUDA_ARCH" "--build-arg CUDA_ARCH=86"
 expect_final_build_contains "llama-cpp-cuda GCC_VER" "--build-arg GCC_VER=15"
 expect_final_build_contains "llama-cpp-cuda tag" "-t llama-cpp-cuda:test"
@@ -455,7 +451,7 @@ fi
 make_target llama-cpp-cuda-debug LLAMA_CPP="$tmp/llama-cpp" \
     NCCL="$tmp/nccl" NCCL_REPO="$tmp/nccl-repo" NCCL_REF=test-nccl
 expect_make_rc "llama-cpp-cuda-debug rc=0" 0
-expect_sequence "llama-cpp-cuda-debug sequence" "nvidia-base.containerfile nvidia-redist-drv.containerfile nvidia-xorg.containerfile nvidia-redist-cuda.containerfile nvidia-cuda-devel.containerfile nvidia-nccl-devel.containerfile nvidia-cuda-libs.containerfile nvidia-nccl-libs.containerfile llama-cpp-cuda.containerfile llama-cpp-cuda-debug.containerfile"
+expect_sequence "llama-cpp-cuda-debug sequence" "nvidia-base.containerfile nvidia-redist-drv.containerfile nvidia-xorg.containerfile nvidia-cuda-devel.containerfile nvidia-nccl-devel.containerfile nvidia-cuda-libs.containerfile nvidia-nccl-libs.containerfile llama-cpp-cuda.containerfile llama-cpp-cuda-debug.containerfile"
 expect_final_build_contains "llama-cpp-cuda-debug BASE_IMAGE" "--build-arg BASE_IMAGE=nvidia-nccl-devel-cuda-test:test-nccl"
 expect_final_build_contains "llama-cpp-cuda-debug LLAMA_IMAGE" "--build-arg LLAMA_IMAGE=llama-cpp-cuda:test"
 expect_final_build_contains "llama-cpp-cuda-debug tag" "-t llama-cpp-cuda-debug:test"
@@ -486,9 +482,9 @@ expect_final_build_contains "llama-cpp-cuda (fork slash) tag" "-t llama-cpp-glm5
 # --- 11. nvidia-nccl-devel (git fetch/checkout path: pre-created working dir) ---
 make_target nvidia-nccl-devel NCCL="$tmp/nccl" NCCL_REPO="$tmp/nccl-repo" NCCL_REF=test-nccl
 expect_make_rc "nvidia-nccl-devel (fetch) rc=0" 0
-expect_sequence "nvidia-nccl-devel sequence" "nvidia-base.containerfile nvidia-redist-drv.containerfile nvidia-xorg.containerfile nvidia-redist-cuda.containerfile nvidia-cuda-devel.containerfile nvidia-nccl-devel.containerfile"
+expect_sequence "nvidia-nccl-devel sequence" "nvidia-base.containerfile nvidia-redist-drv.containerfile nvidia-xorg.containerfile nvidia-cuda-devel.containerfile nvidia-nccl-devel.containerfile"
 expect_final_build_contains "nvidia-nccl-devel CUDA_DEVEL_IMAGE" "--build-arg CUDA_DEVEL_IMAGE=nvidia-cuda-devel:test"
-expect_final_build_contains "nvidia-nccl-devel NVCC" "--build-arg NVCC=/opt/cuda/bin/nvcc"
+expect_final_build_contains "nvidia-nccl-devel NVCC" "--build-arg NVCC=/usr/local/cuda/bin/nvcc"
 expect_final_build_contains "nvidia-nccl-devel CUDA_ARCH" "--build-arg CUDA_ARCH=86"
 expect_final_build_contains "nvidia-nccl-devel CUDA_VER" "--build-arg CUDA_VER=test"
 expect_final_build_contains "nvidia-nccl-devel GCC_VER" "--build-arg GCC_VER=15"
@@ -514,7 +510,7 @@ fi
 # --- 12. nvidia-nccl-libs ---
 make_target nvidia-nccl-libs NCCL="$tmp/nccl" NCCL_REPO="$tmp/nccl-repo" NCCL_REF=test-nccl
 expect_make_rc "nvidia-nccl-libs rc=0" 0
-expect_sequence "nvidia-nccl-libs sequence" "nvidia-base.containerfile nvidia-redist-drv.containerfile nvidia-xorg.containerfile nvidia-redist-cuda.containerfile nvidia-cuda-devel.containerfile nvidia-nccl-devel.containerfile nvidia-cuda-libs.containerfile nvidia-nccl-libs.containerfile"
+expect_sequence "nvidia-nccl-libs sequence" "nvidia-base.containerfile nvidia-redist-drv.containerfile nvidia-xorg.containerfile nvidia-cuda-devel.containerfile nvidia-nccl-devel.containerfile nvidia-cuda-libs.containerfile nvidia-nccl-libs.containerfile"
 expect_final_build_contains "nvidia-nccl-libs NCCL_DEVEL_IMAGE" "--build-arg NCCL_DEVEL_IMAGE=nvidia-nccl-devel-cuda-test:test-nccl"
 expect_final_build_contains "nvidia-nccl-libs NCCL_DEVEL_IMAGE_ID" "--build-arg NCCL_DEVEL_IMAGE_ID=sha256:fake-nvidia-nccl-devel-cuda-test-test-nccl"
 expect_final_build_contains "nvidia-nccl-libs BASE_IMAGE" "--build-arg BASE_IMAGE=nvidia-cuda-libs:test"
@@ -525,7 +521,7 @@ expect_no_from "nvidia-nccl-libs no --from"
 # --- 13. nvidia-nccl (meta: prerequisites only, same sequence as nvidia-nccl-libs) ---
 make_target nvidia-nccl NCCL="$tmp/nccl" NCCL_REPO="$tmp/nccl-repo" NCCL_REF=test-nccl
 expect_make_rc "nvidia-nccl rc=0" 0
-expect_sequence "nvidia-nccl sequence" "nvidia-base.containerfile nvidia-redist-drv.containerfile nvidia-xorg.containerfile nvidia-redist-cuda.containerfile nvidia-cuda-devel.containerfile nvidia-nccl-devel.containerfile nvidia-cuda-libs.containerfile nvidia-nccl-libs.containerfile"
+expect_sequence "nvidia-nccl sequence" "nvidia-base.containerfile nvidia-redist-drv.containerfile nvidia-xorg.containerfile nvidia-cuda-devel.containerfile nvidia-nccl-devel.containerfile nvidia-cuda-libs.containerfile nvidia-nccl-libs.containerfile"
 expect_final_build_contains "nvidia-nccl final tag" "-t nvidia-nccl-libs-cuda-test:test-nccl"
 expect_no_from "nvidia-nccl no --from"
 
@@ -556,7 +552,7 @@ else
 fi
 
 # --- 16. containerfiles: FROM via ARG (or scratch) + comment line above ---
-cf_files="$repo_root/nvidia-base.containerfile $repo_root/kernel-devel.containerfile $repo_root/kernel-redist.containerfile $repo_root/nvidia-kmod-oss.containerfile $repo_root/nvidia-kmod.containerfile $repo_root/nvidia-xorg.containerfile $repo_root/nvidia-cuda-devel.containerfile $repo_root/nvidia-cuda-libs.containerfile $repo_root/llama-cpp-cuda.containerfile $repo_root/nvidia-redist-drv.containerfile $repo_root/nvidia-redist-cuda.containerfile $repo_root/nvidia-nccl-devel.containerfile $repo_root/nvidia-nccl-libs.containerfile $repo_root/llama-cpp-cuda-debug.containerfile $repo_root/lact-redist.containerfile $repo_root/nvidia-lact.containerfile $repo_root/nvidia-lact-autoswitch.containerfile"
+cf_files="$repo_root/nvidia-base.containerfile $repo_root/kernel-devel.containerfile $repo_root/kernel-redist.containerfile $repo_root/nvidia-kmod-oss.containerfile $repo_root/nvidia-kmod.containerfile $repo_root/nvidia-xorg.containerfile $repo_root/nvidia-cuda-devel.containerfile $repo_root/nvidia-cuda-libs.containerfile $repo_root/llama-cpp-cuda.containerfile $repo_root/nvidia-redist-drv.containerfile $repo_root/nvidia-nccl-devel.containerfile $repo_root/nvidia-nccl-libs.containerfile $repo_root/llama-cpp-cuda-debug.containerfile $repo_root/lact-redist.containerfile $repo_root/nvidia-lact.containerfile $repo_root/nvidia-lact-autoswitch.containerfile"
 bad_from=$(awk '
     FNR == 1 { prev = "" }
     /^FROM/ {
@@ -686,14 +682,14 @@ for pair in 'ARG DRIVER_REDIST_IMAGE_ID' 'ARG LACT_REDIST_IMAGE_ID'; do
         ko "nvidia-lact containerfile: $pair" "line in nvidia-lact.containerfile" "not found"
     fi
 done
-for pair in 'ARG NVIDIA_XORG_IMAGE_ID' 'ARG CUDA_REDIST_IMAGE_ID'; do
+for pair in 'ARG NVIDIA_XORG_IMAGE_ID' 'ARG CUDA_PKG_SERIES'; do
     if grep -qF -- "$pair" "$repo_root/nvidia-cuda-devel.containerfile"; then
         ok "nvidia-cuda-devel containerfile: $pair"
     else
         ko "nvidia-cuda-devel containerfile: $pair" "line in nvidia-cuda-devel.containerfile" "not found"
     fi
 done
-for pair in 'ARG NVIDIA_XORG_IMAGE_ID' 'ARG CUDA_DEVEL_IMAGE_ID'; do
+for pair in 'ARG NVIDIA_XORG_IMAGE_ID' 'ARG CUDA_PKG_SERIES'; do
     if grep -qF -- "$pair" "$repo_root/nvidia-cuda-libs.containerfile"; then
         ok "nvidia-cuda-libs containerfile: $pair"
     else
@@ -704,6 +700,79 @@ if grep -qF -- 'ARG NCCL_DEVEL_IMAGE_ID' "$repo_root/nvidia-nccl-libs.containerf
     ok "nvidia-nccl-libs containerfile: ARG NCCL_DEVEL_IMAGE_ID"
 else
     ko "nvidia-nccl-libs containerfile: ARG NCCL_DEVEL_IMAGE_ID" "line in nvidia-nccl-libs.containerfile" "not found"
+fi
+
+# --- 16i. stage 24 statics: CUDA from NVIDIA dnf repo ---
+for pair in 'curl -SLo /etc/yum.repos.d/cuda-fedora44.repo $CUDA_REPO_BASE/cuda-fedora44.repo' \
+            'dnf install -y --setopt=install_weak_deps=False $CUDA_DEVEL_SET' \
+            'rpm -qa | grep -- "-${CUDA_PKG_SERIES}-" | sort > /usr/local/cuda-installed.txt'; do
+    if grep -qF -- "$pair" "$repo_root/nvidia-cuda-devel.containerfile"; then
+        ok "nvidia-cuda-devel containerfile: $pair"
+    else
+        ko "nvidia-cuda-devel containerfile: $pair" "line in nvidia-cuda-devel.containerfile" "not found"
+    fi
+done
+for pair in 'curl -SLo /etc/yum.repos.d/cuda-fedora44.repo $CUDA_REPO_BASE/cuda-fedora44.repo' \
+            'dnf install -y --setopt=install_weak_deps=False $CUDA_RUNTIME_SET numactl' \
+            'rpm -qa | grep -- "-${CUDA_PKG_SERIES}-" | sort > /usr/local/cuda-installed.txt'; do
+    if grep -qF -- "$pair" "$repo_root/nvidia-cuda-libs.containerfile"; then
+        ok "nvidia-cuda-libs containerfile: $pair"
+    else
+        ko "nvidia-cuda-libs containerfile: $pair" "line in nvidia-cuda-libs.containerfile" "not found"
+    fi
+done
+for bad in 'CUDA_REDIST' 'cuda-redist' 'installer.sh' '/opt/cuda'; do
+    if grep -qF -- "$bad" "$repo_root/nvidia-cuda-devel.containerfile"; then
+        ko "nvidia-cuda-devel containerfile: no $bad" "no '$bad'" "$(grep -nF -- "$bad" "$repo_root/nvidia-cuda-devel.containerfile")"
+    else
+        ok "nvidia-cuda-devel containerfile: no $bad"
+    fi
+done
+for bad in 'CUDA_DEVEL' 'as cuda' 'from=cuda' '/opt/cuda'; do
+    if grep -qF -- "$bad" "$repo_root/nvidia-cuda-libs.containerfile"; then
+        ko "nvidia-cuda-libs containerfile: no $bad" "no '$bad'" "$(grep -nF -- "$bad" "$repo_root/nvidia-cuda-libs.containerfile")"
+    else
+        ok "nvidia-cuda-libs containerfile: no $bad"
+    fi
+done
+for bad in 'NVIDIA_REDIST_CUDA' 'NVIDIA_CUDA_URL' 'NVIDIA_CUDA_132' 'nvidia-redist-cuda'; do
+    if grep -q -- "$bad" "$repo_root/Makefile"; then
+        ko "Makefile: no $bad" "no '$bad' in Makefile" "$(grep -n -- "$bad" "$repo_root/Makefile")"
+    else
+        ok "Makefile: no $bad"
+    fi
+done
+if [ -e "$repo_root/nvidia-redist-cuda.containerfile" ]; then
+    ko "nvidia-redist-cuda.containerfile removed" "file absent" "present"
+else
+    ok "nvidia-redist-cuda.containerfile removed"
+fi
+for pair in 'ARG NVCC=/usr/local/cuda/bin/nvcc' '-DNCCL_ROOT=/usr/local/cuda'; do
+    if grep -qF -- "$pair" "$repo_root/llama-cpp-cuda.containerfile"; then
+        ok "llama-cpp-cuda containerfile: $pair"
+    else
+        ko "llama-cpp-cuda containerfile: $pair" "line in llama-cpp-cuda.containerfile" "not found"
+    fi
+done
+for pair in 'ARG NVCC=/usr/local/cuda/bin/nvcc' 'cp -aP build/lib/libnccl* /usr/local/cuda-${CUDA_VER}/lib64/'; do
+    if grep -qF -- "$pair" "$repo_root/nvidia-nccl-devel.containerfile"; then
+        ok "nvidia-nccl-devel containerfile: $pair"
+    else
+        ko "nvidia-nccl-devel containerfile: $pair" "line in nvidia-nccl-devel.containerfile" "not found"
+    fi
+done
+for pair in '--mount=type=bind,from=nccl-src,source=/usr/local/cuda-${CUDA_VER},target=/mnt/nccl' \
+            'cp -aP /mnt/nccl/lib64/libnccl.so* /usr/local/cuda-${CUDA_VER}/lib64/'; do
+    if grep -qF -- "$pair" "$repo_root/nvidia-nccl-libs.containerfile"; then
+        ok "nvidia-nccl-libs containerfile: $pair"
+    else
+        ko "nvidia-nccl-libs containerfile: $pair" "line in nvidia-nccl-libs.containerfile" "not found"
+    fi
+done
+if grep -qF -- '--entrypoint /usr/local/cuda/bin/compute-sanitizer' "$repo_root/debug/repro-llama-block3-run.sh"; then
+    ok "repro-llama-block3-run.sh: sanitizer entrypoint /usr/local/cuda"
+else
+    ko "repro-llama-block3-run.sh: sanitizer entrypoint /usr/local/cuda" "--entrypoint /usr/local/cuda/bin/compute-sanitizer" "$(grep -n 'compute-sanitizer' "$repo_root/debug/repro-llama-block3-run.sh")"
 fi
 
 # --- 17. lact-redist ---
