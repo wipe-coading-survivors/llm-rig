@@ -12,7 +12,11 @@
 # 2) Generic (always, incl. without local.mk — CI-compatible): private
 #    IP ranges (10/8, 172.16/12, 192.168/16) with numeric boundaries
 #    in in-scope tracked files. 127.0.0.1 (loopback) and 192.0.2.x
-#    (TEST-NET) are out of scope on purpose.
+#    (TEST-NET) are out of scope on purpose. A candidate directly
+#    preceded by '-' is a version fragment, not an IP (RPM NEVRA,
+#    e.g. libcurand-13-3-10.4.3.29-1: the cuRAND version matches the
+#    10/8 branch); real IPs in this repo's file types are never
+#    glued to '-'.
 # Any other hit in an in-scope tracked file = fail.
 set -eu
 
@@ -49,7 +53,7 @@ else
     ok "local.mk absent — values check skipped (generic part only)"
 fi
 
-pat='(^|[^0-9.])(10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3})([^0-9.]|$)'
+pat='(^|[^0-9.-])(10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3})([^0-9.]|$)'
 hits=$(tracked_grep -nE -- "$pat")
 if [ -n "$hits" ]; then
     ko "no private-IP range in tracked files" "no match" "$hits"
