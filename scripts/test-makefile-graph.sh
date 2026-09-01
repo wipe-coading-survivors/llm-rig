@@ -703,7 +703,7 @@ else
 fi
 
 # --- 16i. stage 24 statics: CUDA from NVIDIA dnf repo ---
-for pair in 'curl -SLo /etc/yum.repos.d/cuda-fedora44.repo $CUDA_REPO_BASE/cuda-fedora44.repo' \
+for pair in 'curl -fsLo /etc/yum.repos.d/cuda-fedora44.repo $CUDA_REPO_BASE/cuda-fedora44.repo' \
             'dnf install -y --setopt=install_weak_deps=False $CUDA_DEVEL_SET' \
             'rpm -qa | grep -- "-${CUDA_PKG_SERIES}-" | sort > /usr/local/cuda-installed.txt'; do
     if grep -qF -- "$pair" "$repo_root/nvidia-cuda-devel.containerfile"; then
@@ -712,7 +712,7 @@ for pair in 'curl -SLo /etc/yum.repos.d/cuda-fedora44.repo $CUDA_REPO_BASE/cuda-
         ko "nvidia-cuda-devel containerfile: $pair" "line in nvidia-cuda-devel.containerfile" "not found"
     fi
 done
-for pair in 'curl -SLo /etc/yum.repos.d/cuda-fedora44.repo $CUDA_REPO_BASE/cuda-fedora44.repo' \
+for pair in 'curl -fsLo /etc/yum.repos.d/cuda-fedora44.repo $CUDA_REPO_BASE/cuda-fedora44.repo' \
             'dnf install -y --setopt=install_weak_deps=False $CUDA_RUNTIME_SET numactl' \
             'rpm -qa | grep -- "-${CUDA_PKG_SERIES}-" | sort > /usr/local/cuda-installed.txt'; do
     if grep -qF -- "$pair" "$repo_root/nvidia-cuda-libs.containerfile"; then
@@ -740,6 +740,13 @@ for bad in 'NVIDIA_REDIST_CUDA' 'NVIDIA_CUDA_URL' 'NVIDIA_CUDA_132' 'nvidia-redi
         ko "Makefile: no $bad" "no '$bad' in Makefile" "$(grep -n -- "$bad" "$repo_root/Makefile")"
     else
         ok "Makefile: no $bad"
+    fi
+done
+for pair in '--build-arg "CUDA_DEVEL_SET=$(CUDA_DEVEL_SET)"' '--build-arg "CUDA_RUNTIME_SET=$(CUDA_RUNTIME_SET)"'; do
+    if grep -qF -- "$pair" "$repo_root/Makefile"; then
+        ok "Makefile: quoted SET build-arg"
+    else
+        ko "Makefile: quoted SET build-arg" "line: $pair" "$(grep -n 'CUDA_DEVEL_SET=\|CUDA_RUNTIME_SET=' "$repo_root/Makefile")"
     fi
 done
 if [ -e "$repo_root/nvidia-redist-cuda.containerfile" ]; then

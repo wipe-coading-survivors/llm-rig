@@ -7,8 +7,8 @@
 # 1) Values from local.mk (if the file exists): each VALUE must not
 #    appear in any in-scope tracked file (grep -F, fixed string).
 #    local.mk is untracked -> it does not catch itself;
-#    local.mk.example carries only RFC 5737 (192.0.2.0/24) -> no
-#    intersection with either part.
+#    local.mk.example carries only RFC 5737 (192.0.2.0/24) and the
+#    example.com placeholder -> no intersection with either part.
 # 2) Generic (always, incl. without local.mk — CI-compatible): private
 #    IP ranges (10/8, 172.16/12, 192.168/16) with numeric boundaries
 #    in in-scope tracked files. 127.0.0.1 (loopback) and 192.0.2.x

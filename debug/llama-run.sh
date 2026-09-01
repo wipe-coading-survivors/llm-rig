@@ -16,5 +16,5 @@ exec $CRE run -d --name llama-cpp \
   -v /etc/llama:/root/llama:ro \
   -p 8080:8080 \
   -e LLAMA_LOG_TIMESTAMPS=1 \
-  localhost/llama-cpp-cuda:13.2 --port 8080 --host 0.0.0.0 \
+  localhost/llama-cpp-cuda:13.3 --port 8080 --host 0.0.0.0 \
   --models-preset /root/llama/llama.ini

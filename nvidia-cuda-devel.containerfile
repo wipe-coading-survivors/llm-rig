@@ -16,7 +16,7 @@ ARG CUDA_DEVEL_SET
 RUN \
   --mount=type=bind,from=nvidia-drv-libs,source=/,target=/mnt/drv-libs \
   set -euxo pipefail ; \
-  curl -SLo /etc/yum.repos.d/cuda-fedora44.repo $CUDA_REPO_BASE/cuda-fedora44.repo ; \
+  curl -fsLo /etc/yum.repos.d/cuda-fedora44.repo $CUDA_REPO_BASE/cuda-fedora44.repo ; \
   cp -arv /mnt/drv-libs/opt/nvidia/ /opt/nvidia/ && \
   cp -av /mnt/drv-libs/usr/lib64/libcuda* /usr/lib64/ && \
   cp -av /mnt/drv-libs/usr/lib64/libnvidia* /usr/lib64/ && \
