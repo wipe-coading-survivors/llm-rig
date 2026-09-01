@@ -388,7 +388,7 @@ runtime-пакетов.
   libcublasLt.so.13  => /usr/local/cuda/targets/x86_64-linux/lib/libcublasLt.so.13    (транзитивно, через libcublas)
   libnvJitLink.so.13 => /usr/local/cuda/targets/x86_64-linux/lib/libnvJitLink.so.13   (транзитивно, через libcusolver)
   ```
-  (`/usr/local/cuda` → `/usr/local/cuda-13.3`, как в §2.4.)
+  (`/usr/local/cuda` → `/usr/local/cuda-13.3`, как в §2, п.4.)
 - **Какие из 8 `.so`-пакетов подгружаются динамически** (в ldd всего 8 `.so`:
   6 прямых `DT_NEEDED` + 2 транзитивных):
 
@@ -608,7 +608,7 @@ NVIDIA-репо). Установка тянет ровно 1 пакет (46 KiB 
 | NEVRA (2) | **А** — точный NEVRA ставится; несуществующий — fail-loud (exit=1) | §2 п.2: 7 NEVRA devel-набора установлены ровно указанных версий; bad NEVRA → «Нет соответствия для аргумента», exit=1. **Коррекция: пин — БЕЗ суффикса `.rpm`** (на dnf5 суффикс `.rpm` = путь к локальному файлу, не NEVRA репо → «No such file or directory», exit=1; пример из пре-чек-спеки `cuda-nvcc-13-3-13.3.73-1.x86_64.rpm` как пин работать не будет). |
 | weakdeps (3) | **А** — дельта зафиксирована → `install_weak_deps=False` в основной спеке | §2 п.3: дельта = 10 пакетов / 12.0 MiB (314 vs 324 пакета), все — базовый тулчейн (7zip, bat, unzip, …), **ни одного CUDA-пакета** → weakdeps не несут нужного, отключаем. |
 | размещение (4) | **Б** (ближайший к шаблону) — libs НЕ в `/usr/lib64` | §2 п.4: факт не совпадает дословно ни с А, ни с Б шаблона — всё под `/usr/local/cuda-13.3/targets/x86_64-linux/lib` (+ hard-link'd `lib64`, одни иноды), в `/usr/lib64` только `*.pc` devel. `/etc/ld.so.conf.d`-входы (`000_cuda.conf`, `987_cuda-13.conf`) — **SHIPPED BY THE PACKAGES**; `/usr/local/cuda` — через package alternatives (`/etc/alternatives/cuda`). **Собственный ldconfig conf не нужен** (поставлен пакетами). |
-| runtime-набор (6) | **А** — набор из 8 пакетов достаточен, добавлять нечего | §3.6 + §3.7: 7/8 `.so` подгружаются динамически (ldd, 6 прямых `DT_NEEDED` + 2 транзитивных), Sgemm/cufft — точный ответ на GPU (exit 0), `libnvfatbin.so.13` — присутствующий лист (не в `DT_NEEDED` ни одного `.so`, но установлен и резолвится в ld-кэше). |
+| runtime-набор (6) | **А** — набор из 8 пакетов достаточен, добавлять нечего | §3.6 + §3.7: 7/8 пакетов подгружаются динамически (ldd, 6 прямых `DT_NEEDED` + 2 транзитивных), Sgemm/cufft — точный ответ на GPU (exit 0), `libnvfatbin.so.13` — присутствующий лист (не в `DT_NEEDED` ни одного `.so`, но установлен и резолвится в ld-кэше). |
 | NCCL g++15 (7) | **А** — собирается → базовая конфигурация сохраняется | §4: `CXX=g++-15` exit=0, время **132 s**, `libnccl.so.2.31.2` (57 976 256 B) + `libnccl_static.a` + `ncclparam` на месте. |
 | NCCL g++16 (8) | **Б** — ошибка → оставить `GCC_VER=15` | §4: fail-loud на первом `.cu` — nvcc 13.3.1 `host_config.h` `#error -- unsupported GNU version! gcc versions later than 15 are not supported!`, exit=2 (12 s, до линковки не дошла) → **GCC_VER остаётся 15** (переворот на дефолтный 16 сломал бы NCCL/CUDA-код). |
 | llama configure (9) | **А** — configure OK; `NVCC`/`NCCL_ROOT` = `/usr/local/cuda` | §5: CUDA 13.3.73 (nvcc V13.3.73, host g++15 принят), NCCL найден по `NCCL_ROOT=/usr/local/cuda` (`/usr/local/cuda/lib64/libnccl.so`). **НО** (§5 + доп. проба): devel-набор = 7 пин NEVRA + `cuda-driver-devel-13-3-13.3.29-1` (стуб `libcuda.so` → `CUDA::cuda_driver`); на toolkit-only образе (7 NEVRA) Generate step падает. |
