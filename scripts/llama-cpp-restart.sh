@@ -150,7 +150,7 @@ preflight() {
             && fail 2 "container $LLAMA_CONTAINER не запущен"
     fi
     read_key || fail 2 "ключи нечитаемы: $KEYS_PATH"
-    printf 'header = "Authorization: Bearer %s"\n' "$KEY" > "$KEY_CFG"
+    ( umask 077; printf 'header = "Authorization: Bearer %s"\n' "$KEY" > "$KEY_CFG" )
     chmod 600 "$KEY_CFG"
     st preflight "ok unit=$unit_state"
 }
@@ -160,7 +160,7 @@ wait_idle() {
     local deadline=$(( $(date +%s) + IDLE_TIMEOUT ))
     local slots busy
     while :; do
-        if slots=$(curl -sS -m 10 -K "$KEY_CFG" "$LLAMA_URL/slots?model=$LLAMA_MODEL" 2>/dev/null); then
+        if slots=$(curl -sS -f -m 10 -K "$KEY_CFG" "$LLAMA_URL/slots?model=$LLAMA_MODEL" 2>/dev/null); then
             busy=$(grep -o '"is_processing":true' <<< "$slots" | wc -l)
             if [ "$busy" -eq 0 ]; then
                 st wait-idle "idle"
@@ -206,7 +206,7 @@ verify() {
 
 check_mode() {
     local slots busy models
-    if ! slots=$(curl -sS -m 10 -K "$KEY_CFG" "$LLAMA_URL/slots?model=$LLAMA_MODEL" 2>/dev/null); then
+    if ! slots=$(curl -sS -f -m 10 -K "$KEY_CFG" "$LLAMA_URL/slots?model=$LLAMA_MODEL" 2>/dev/null); then
         fail 2 "slots недоступны"
     fi
     busy=$(grep -o '"is_processing":true' <<< "$slots" | wc -l)

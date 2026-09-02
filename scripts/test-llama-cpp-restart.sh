@@ -60,6 +60,9 @@ class H(http.server.BaseHTTPRequestHandler):
             else:
                 self._send(200, {"data": []})
         elif self.path.startswith("/slots"):
+            if self.headers.get("Authorization", "") != "Bearer test-key-123":
+                self._send(401, {"error": "unauthorized"})
+                return
             if flag("busy"):
                 slots = [{"id": 0, "is_processing": True, "id_task": 1},
                          {"id": 1, "is_processing": False, "id_task": 2}]
@@ -140,10 +143,11 @@ write_cfg() { # $1 = port for baseURL
 write_cfg "$port"
 
 OVR_OPENCODE_CONFIG=
+KEYS_FILE="$tmp/keys.txt"
 run_script() { # args to the script; log -> $tmp/run.log, status -> $tmp/run.status
     env CRE=podman HOST_ROOT= SYSTEMDCTL=systemctl \
         LLAMA_URL="http://127.0.0.1:$port" LLAMA_MODEL=default \
-        LLAMA_KEYS_FILE="$tmp/keys.txt" LLAMA_CONTAINER=llama-cpp \
+        LLAMA_KEYS_FILE="$KEYS_FILE" LLAMA_CONTAINER=llama-cpp \
         STATUS="$tmp/run.status" OPENCODE_CONFIG="$OVR_OPENCODE_CONFIG" \
         HOME="$tmp/home" \
         PATH="$bin:$PATH" \
@@ -289,6 +293,38 @@ else
     ko "flock: second run rc=2" "rc=2" "rc=$rc log: $(cat "$tmp/run.log")"
 fi
 wait "$lockpid"
+
+# --- 10. restart: wrong key (mock /slots 401) -> rc=3, no restart, server untouched ---
+printf 'bad-key-999\n' > "$tmp/bad-keys.txt"
+rm -f "$state/systemctl-calls"
+ready_before=0
+[ -f "$state/ready" ] && ready_before=1
+KEYS_FILE="$tmp/bad-keys.txt"
+rc=0
+run_script restart --idle-timeout 2 || rc=$?
+KEYS_FILE="$tmp/keys.txt"
+if [ "$rc" -eq 3 ]; then
+    ok "restart bad-key rc=3"
+else
+    ko "restart bad-key rc=3" "rc=3" "rc=$rc log: $(cat "$tmp/run.log")"
+fi
+if grep -qF ' failed rc=3 ' "$tmp/run.status"; then
+    ok "restart bad-key status failed rc=3"
+else
+    ko "restart bad-key status failed rc=3" "line in status" "$(cat "$tmp/run.status")"
+fi
+if [ -e "$state/systemctl-calls" ] && grep -qx 'systemctl restart llama-cpp' "$state/systemctl-calls"; then
+    ko "restart bad-key: no systemctl restart" "no 'systemctl restart llama-cpp' call" "$(cat "$state/systemctl-calls")"
+else
+    ok "restart bad-key: no systemctl restart"
+fi
+ready_after=0
+[ -f "$state/ready" ] && ready_after=1
+if [ "$ready_before" = "$ready_after" ]; then
+    ok "restart bad-key: server untouched (ready flag as before)"
+else
+    ko "restart bad-key: server untouched (ready flag as before)" "ready=$ready_before" "ready=$ready_after"
+fi
 
 echo "# pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

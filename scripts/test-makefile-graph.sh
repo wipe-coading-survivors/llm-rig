@@ -1125,6 +1125,7 @@ mkdir -p "$tmp/setsid-stub"
 cat > "$tmp/setsid-stub/setsid" <<'SH'
 #!/bin/sh
 echo "stub-setsid $*" >> "${FAKE_SETSID_LOG:?}"
+for a in "$@"; do printf 'ARG:%s\n' "$a" >> "${FAKE_SETSID_LOG:?}"; done
 exit 0
 SH
 chmod +x "$tmp/setsid-stub/setsid"
@@ -1154,6 +1155,19 @@ if printf '%s' "$make_out" | grep -qF "llama-cpp-restart: started (log=$tmp/rest
     ok "llama-cpp-restart: started-echo"
 else
     ko "llama-cpp-restart: started-echo" "echo with RESTART_LOG" "make out: $make_out"
+fi
+
+# multi-word SYSTEMDCTL (toolbx form): env values must be one argv element each
+: > "$FAKE_SETSID_LOG"
+PATH="$tmp/setsid-stub:$PATH" make_target llama-cpp-restart MODE=check \
+    HOST_ROOT="$tmp/hostroot" SYSTEMDCTL="chroot $tmp/hostroot /usr/bin/systemctl" \
+    RESTART_LOG="$tmp/restart.log"
+expect_make_rc "llama-cpp-restart (multi-word SYSTEMDCTL) rc=0" 0
+if grep -qF -- "ARG:SYSTEMDCTL=chroot $tmp/hostroot /usr/bin/systemctl" "$FAKE_SETSID_LOG"; then
+    ok "llama-cpp-restart (multi-word SYSTEMDCTL): quoted argv element"
+else
+    ko "llama-cpp-restart (multi-word SYSTEMDCTL): quoted argv element" \
+        "ARG:SYSTEMDCTL=chroot $tmp/hostroot /usr/bin/systemctl" "$(cat "$FAKE_SETSID_LOG")"
 fi
 
 # fail-loud: no local.mk -> отказ до setsid

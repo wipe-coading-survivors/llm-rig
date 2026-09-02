@@ -412,12 +412,12 @@ RESTART_LOG ?= /tmp/llm-rig/llama-cpp-restart.log
 
 llama-cpp-restart:
 	[ -f local.mk ] || { echo "ERROR: no local.mk (cp local.mk.example local.mk, fill in values)" >&2; exit 1; }
-	mkdir -p $(dir $(RESTART_LOG))
-	setsid -f env CRE=$(CRE) HOST_ROOT=$(HOST_ROOT) SYSTEMDCTL=$(SYSTEMDCTL) \
-	  LLAMA_URL=$(LLAMA_URL) LLAMA_MODEL=$(LLAMA_MODEL) \
-	  LLAMA_KEYS_FILE=$(LLAMA_KEYS_FILE) LLAMA_CONTAINER=$(LLAMA_CPP) \
-	  OPENCODE_CONFIG=$(OPENCODE_CONFIG) \
-	  ./scripts/llama-cpp-restart.sh $(MODE) --idle-timeout $(IDLE_TIMEOUT) \
-	  --ready-timeout $(READY_TIMEOUT) $(if $(VERIFY_REQUEST),--verify-request $(VERIFY_REQUEST)) \
-	  < /dev/null >> $(RESTART_LOG) 2>&1
+	mkdir -p "$(dir $(RESTART_LOG))"
+	setsid -f env CRE="$(CRE)" HOST_ROOT="$(HOST_ROOT)" SYSTEMDCTL="$(SYSTEMDCTL)" \
+	  LLAMA_URL="$(LLAMA_URL)" LLAMA_MODEL="$(LLAMA_MODEL)" \
+	  LLAMA_KEYS_FILE="$(LLAMA_KEYS_FILE)" LLAMA_CONTAINER="$(LLAMA_CPP)" \
+	  OPENCODE_CONFIG="$(OPENCODE_CONFIG)" \
+	  ./scripts/llama-cpp-restart.sh "$(MODE)" --idle-timeout "$(IDLE_TIMEOUT)" \
+	  --ready-timeout "$(READY_TIMEOUT)" $(if $(VERIFY_REQUEST),--verify-request "$(VERIFY_REQUEST)") \
+	  < /dev/null >> "$(RESTART_LOG)" 2>&1
 	@echo "llama-cpp-restart: started (log=$(RESTART_LOG), status=/tmp/llm-rig/llama-cpp-restart.status)"
