@@ -270,6 +270,12 @@ if grep -qF 'test-key-123' "$tmp/run.status" "$tmp/run.log"; then
 else
     ok "key not in log/status"
 fi
+if grep -qF -- '-H "Authorization: Bearer' "$script"; then
+    ko "key not on curl argv in source" "no -H Bearer header in $script" \
+        "$(grep -nF -- '-H \"Authorization: Bearer' "$script")"
+else
+    ok "key not on curl argv in source"
+fi
 
 # --- 9. flock: second run aborts with rc=2 ---
 flock "$tmp/run.status" -c 'sleep 3' &

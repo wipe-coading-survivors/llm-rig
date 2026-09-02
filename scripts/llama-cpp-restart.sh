@@ -56,15 +56,18 @@ fi
 : > "$STATUS"
 BODY_FILE="$STATUS.body"
 rm -f "$BODY_FILE"
+KEY_CFG="$STATUS.keycfg"
+rm -f "$KEY_CFG"
+trap 'rm -f "$KEY_CFG"' EXIT
 
 st() { # $1=state $2=detail; строка: <ts> <state> <detail>
-    echo "$(date '+%F %T') $1 $2" >> "$STATUS"
-    echo "[$(date '+%F %T')] $1 $2"
+    echo "$(date '+%FT%T') $1 $2" >> "$STATUS"
+    echo "[$(date '+%FT%T')] $1 $2"
 }
 done_ok() { st done "rc=0"; exit 0; }
 fail() { st failed "rc=$1 ${*:2}"; exit "$1"; }
 
-# --- ключ: только из файла в рантайме; в логи/argv не попадает ---
+# --- ключ: только из файла в рантайме; в логи/argv не попадает (curl — через 0600-конфиг) ---
 KEYS_PATH=$LLAMA_KEYS_FILE
 [ -n "$HOST_ROOT" ] && KEYS_PATH="$HOST_ROOT$LLAMA_KEYS_FILE"
 KEY=
@@ -77,12 +80,12 @@ read_key() {
 # --- HTTP-хелперы: тело -> $BODY_FILE, код -> $HTTP_CODE ---
 get() { # $1=path $2=key(1/0)
     local -a a=(-sS -m 15 -o "$BODY_FILE" -w '%{http_code}' "$LLAMA_URL$1")
-    [ "${2:-0}" = 1 ] && a+=(-H "Authorization: Bearer $KEY")
+    [ "${2:-0}" = 1 ] && a+=(-K "$KEY_CFG")
     HTTP_CODE=$(curl "${a[@]}") || HTTP_CODE=000
 }
 post_json() { # $1=path $2=json (keyed)
     HTTP_CODE=$(curl -sS -m 120 -o "$BODY_FILE" -w '%{http_code}' -X POST \
-        -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+        -K "$KEY_CFG" -H 'Content-Type: application/json' \
         -d "$2" "$LLAMA_URL$1") || HTTP_CODE=000
 }
 
@@ -147,6 +150,8 @@ preflight() {
             && fail 2 "container $LLAMA_CONTAINER не запущен"
     fi
     read_key || fail 2 "ключи нечитаемы: $KEYS_PATH"
+    printf 'header = "Authorization: Bearer %s"\n' "$KEY" > "$KEY_CFG"
+    chmod 600 "$KEY_CFG"
     st preflight "ok unit=$unit_state"
 }
 
@@ -155,7 +160,7 @@ wait_idle() {
     local deadline=$(( $(date +%s) + IDLE_TIMEOUT ))
     local slots busy
     while :; do
-        if slots=$(curl -sS -m 10 -H "Authorization: Bearer $KEY" "$LLAMA_URL/slots?model=$LLAMA_MODEL" 2>/dev/null); then
+        if slots=$(curl -sS -m 10 -K "$KEY_CFG" "$LLAMA_URL/slots?model=$LLAMA_MODEL" 2>/dev/null); then
             busy=$(grep -o '"is_processing":true' <<< "$slots" | wc -l)
             if [ "$busy" -eq 0 ]; then
                 st wait-idle "idle"
@@ -201,7 +206,7 @@ verify() {
 
 check_mode() {
     local slots busy models
-    if ! slots=$(curl -sS -m 10 -H "Authorization: Bearer $KEY" "$LLAMA_URL/slots?model=$LLAMA_MODEL" 2>/dev/null); then
+    if ! slots=$(curl -sS -m 10 -K "$KEY_CFG" "$LLAMA_URL/slots?model=$LLAMA_MODEL" 2>/dev/null); then
         fail 2 "slots недоступны"
     fi
     busy=$(grep -o '"is_processing":true' <<< "$slots" | wc -l)
