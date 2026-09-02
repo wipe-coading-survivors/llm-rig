@@ -51,20 +51,21 @@ LLM (NVIDIA): модули ядра, драйвер, OC/авто-свитч, р�
 ### 25. Безопасный рестарт живого сервера (фоллоу-ап live-окна Этапа 24)
 Спека: `docs/superpowers/specs/2026-09-02-safe-restart-design.md`
 (наработки по рестарту — в архиве, nvidia-aiml/docs/superpowers)
-- [ ] `scripts/llama-cpp-restart.sh` (check/restart/stop/start) +
+- [x] `scripts/llama-cpp-restart.sh` (check/restart/stop/start) +
       `make llama-cpp-restart`: wait-idle (поллинг `/slots`
       `is_processing`, параметр, дефолт 30 c → abort rc=3), `setsid -f`
       (self-healing: переживает сессию), правило SAME_HOST (opencode
       baseURL + CRE-контейнер + порт), ready-gate `/v1/models` loaded,
       verify-curl; hermetic-тест (mock-сервер + PATH-stubs)
-- [ ] `LIVE-SERVER.md` (корень, tracked, без секретов): работа с живым
+- [x] `LIVE-SERVER.md` (корень, tracked, без секретов): работа с живым
       сервером (эндпоинты, ключи `/etc/llama/llama-cpp-keys.txt`,
       sysconfig, watcher, даунтайм/загрузка модели) + правило в
       `AGENTS.md` (деятельностный триггер)
-- [ ] `local.mk`: только опциональная `OPENCODE_CONFIG` (анализ —
+- [x] `local.mk`: только опциональная `OPENCODE_CONFIG` (анализ —
       спека, секция «local.mk»)
-- [ ] live-окно: in-flight-тест (abort rc=3) + полный рестарт с замером
-      таймлайна; приёмка — сессия переживает рестарт
+- [x] live-окно: in-flight-тест (abort rc=3) + полный рестарт с замером
+      таймлайна; приёмка — сессия переживает рестарт (02.09, отчёт
+      `docs/superpowers/reports/2026-09-02-stage25-safe-restart.md`)
 
 ### 26. Non-root окружение (пока на подумать, без спеки)
 - [ ] разработку вести от имени обычного пользователя (не root)
@@ -75,6 +76,8 @@ LLM (NVIDIA): модули ядра, драйвер, OC/авто-свитч, р�
 
 - [ ] MTP A/B perf-тест (Этап 12, целиком)
 - [ ] vendor-патч llama.cpp in-process exit (Этап 10, опц.)
-- [ ] stop/restart-hang при in-flight task (След-Этап 14)
+- [ ] stop/restart-hang при in-flight task (След-Этап 14;
+      воспроизведён в live-окне Этапа 25: stop-hang 90 s → SIGABRT при
+      release task в ту же секунду SIGTERM; скрипт Этапа 25 его поглощает)
 - [ ] эскалация по числу child-крахов (Этап 10)
 - [ ] lact-autoswitch: POLL_INTERVAL 5 → 10 s (Этап 16, опц.)
