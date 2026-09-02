@@ -110,8 +110,15 @@ prompt 75 токенов) + `make llama-cpp-restart MODE=restart IDLE_TIMEOUT=5`
 Числа (каждое — с длиной контекста на момент измерения):
 
 - **t0→t1 даунтайм = 137 s** (запросов нет; контекст не применим).
-- **t1→t2 загрузка модели = 21 s** (27B q8, mlock, 5×GPU tensor split,
-  page cache тёплый; запросов ещё нет).
+- **t1→t2 загрузка модели = 21 s** (модель 30 GB q8, mlock, 5×GPU
+  tensor split; запросов ещё нет). 30 GB ÷ 21 s ≈ 1.4 GB/s — выше
+  10GbE-линии (~1.1 GB/s) → клиентский page cache (pigoky) был тёплый.
+  Верификация post-hoc: dd 1 GB через cache — **6.2 GB/s**, dd 256 MB
+  `iflag=direct` (чистая NFS4.2) — **436 MB/s**. Цепочка: `/models` =
+  bind `/var/local/llm/gguf-models` = NFS4.2 `172.17.7.247:/mnt/sas/
+  llm` (TrueNAS; клиент pigoky 10GbE, TCP, rsize 1 MB). Холодная
+  загрузка ≈ 30 GB @ ~450 MB/s ≈ 65–70 s + mlock/GPU → t1→t2 cold ≈
+  70–80 s.
 - **t3 verify**: prompt **58 токенов** — prefill 1037.6 ms (55.90 t/s),
   генерация 8 токенов 404.6 ms (17.30 t/s, холодные CUDA graphs:
   `graphs reused = 2`); total 1442 ms.

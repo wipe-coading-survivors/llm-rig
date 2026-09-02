@@ -93,15 +93,18 @@
 контекста (не строго линейно).
 
 Замеры 02.09 (live-окно Этапа 25, отчёт
-`docs/superpowers/reports/2026-09-02-stage25-safe-restart.md`; 27B q8,
-mlock, 5×GPU tensor split, page cache тёплый):
+`docs/superpowers/reports/2026-09-02-stage25-safe-restart.md`; модель
+30 GB q8, mlock, 5×GPU tensor split; модель — NFS4.2 `172.17.7.247:
+/mnt/sas/llm` (TrueNAS), клиент pigoky 10GbE, `/models` = bind
+`/var/local/llm/gguf-models`):
 
 - t0→t1 даунтайм (старт рестарта → первый `/health` ok): **137 s**
   (включает stop-hang 90 s → SIGABRT и упавший старт №1 exit 125 +
   RestartSec 30 — known-issue stop/restart-hang; запросов в окне нет).
   Контейнер-старт → listen роутера — ~1 s.
-- t1→t2 загрузка модели (→ `/v1/models` `loaded`): **21 s** (запросов
-  ещё нет).
+- t1→t2 загрузка модели (→ `/v1/models` `loaded`): **21 s** (тёплый
+  клиентский page cache: dd 1 GB @ 6.2 GB/s; чистая NFS4.2 —
+  436 MB/s → cold ≈ 70–80 s на 30 GB; запросов ещё нет).
 - t3 verify (200, tok/s): prompt **58 токенов** — prefill 55.90 t/s
   (1038 ms), генерация 8 токенов 17.30 t/s (405 ms, холодные CUDA
   graphs, `graphs reused = 2`); total 1442 ms.
