@@ -144,8 +144,9 @@ Makefile-таргет) либо дефолты: `CRE` (правило `no-cre-ha
   rc=3; 3) `$SYSTEMDCTL restart $UNIT` → rc=4 при неудаче; 4) wait-ready:
   `/health` ok **и** `/v1/models` `status.value="loaded"` (оба без ключа),
   1 с, таймаут → rc=5; 5) verify: `POST /v1/chat/completions`
-  (`model=$MODEL`, `max_tokens=8`, Bearer) → 200, тайминги в status →
-  rc=6 при неудаче; 6) done.
+  (`model=$MODEL`, `max_tokens=8`, Bearer) → 200, строка status
+  `verifying 200 OK`; тайминги — по дельтам ts строк status (протокол
+  «Числа» в `LIVE-SERVER.md`) → rc=6 при неудаче; 6) done.
 - **stop**: preflight → wait-idle → `$SYSTEMDCTL stop` (watcher сам
   skipнёт неактивный юнит, F10).
 - **start**: preflight (юнит не active, контейнера нет) →
@@ -176,13 +177,14 @@ Status-файл (протокол опроса координатором): ст
   restart|stop|start|check, дефолт `restart`; `IDLE_TIMEOUT=30`,
   `READY_TIMEOUT=600`, `VERIFY_REQUEST=`):
   - без `local.mk` — fail-loud (как `systemd`);
-  - рецепт: `setsid -f env CRE=$(CRE) HOST_ROOT=$(HOST_ROOT)
-    SYSTEMDCTL=$(SYSTEMDCTL) LLAMA_URL=$(LLAMA_URL)
-    LLAMA_MODEL=$(LLAMA_MODEL) LLAMA_KEYS_FILE=$(LLAMA_KEYS_FILE)
-    LLAMA_CONTAINER=$(LLAMA_CPP) OPENCODE_CONFIG=$(OPENCODE_CONFIG)
-    ./scripts/llama-cpp-restart.sh $(MODE)
-    --idle-timeout $(IDLE_TIMEOUT) --ready-timeout $(READY_TIMEOUT)
-    < /dev/null >> $(RESTART_LOG) 2>&1`, затем echo путей
+  - рецепт: `setsid -f env CRE="$(CRE)" HOST_ROOT="$(HOST_ROOT)"
+    SYSTEMDCTL="$(SYSTEMDCTL)" LLAMA_URL="$(LLAMA_URL)"
+    LLAMA_MODEL="$(LLAMA_MODEL)" LLAMA_KEYS_FILE="$(LLAMA_KEYS_FILE)"
+    LLAMA_CONTAINER="$(LLAMA_CPP)" OPENCODE_CONFIG="$(OPENCODE_CONFIG)"
+    ./scripts/llama-cpp-restart.sh "$(MODE)"
+    --idle-timeout "$(IDLE_TIMEOUT)" --ready-timeout "$(READY_TIMEOUT)"
+    $(if $(VERIFY_REQUEST),--verify-request "$(VERIFY_REQUEST)")
+    < /dev/null >> "$(RESTART_LOG)" 2>&1`, затем echo путей
     `RESTART_LOG`/STATUS. `setsid -f` (always fork, F12) — рецепт
     возвращается сразу; скрипт живёт в своей сессии.
   - `RESTART_LOG ?= /tmp/llm-rig/llama-cpp-restart.log`.
