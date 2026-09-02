@@ -43,8 +43,8 @@
 - **yes** — рестарт остановит нашу сессию (kill + загрузка модели):
   скрипт сам ждёт, пока все слоты `is_processing=false`, и запускается
   только через `make llama-cpp-restart` (setsid).
-- **no** — сессия не на этом сервере; **unknown** (конфиг не найден) —
-  консервативно: вести себя как yes.
+- **no** — сессия не на этом сервере; **unknown** (конфиг не найден, или
+  контейнер/порт не верифицируемы) — консервативно: вести себя как yes.
 
 ## Рестарт / стоп / старт
 
@@ -57,7 +57,7 @@
   сессию и таймаут tool-вызова, доводя сервер до готовности. Сессия
   может умереть в процессе рестарта — это по дизайну; координатор
   возвращается и опрашивает status.
-- Поток restart: preflight (юнит active — иначе «осознанный
+- Поток restart: preflight (юнит active/activating — иначе «осознанный
   стоп/обслуживание» и скрипт не трогает; ключи) → wait-idle (все
   слоты `is_processing=false`; таймаут → abort rc=3 **без форса** —
   known-issue stop/restart-hang при in-flight task) → `systemctl
@@ -66,11 +66,12 @@
 - rc: 0 ok; 2 preflight/usage/lock; 3 wait-idle (in-flight); 4
   systemctl; 5 wait-ready; 6 verify.
 - Состояние: файл `/tmp/llm-rig/llama-cpp-restart.status` — строки
-  `<ts> <state> <detail>` (часы toolbx — UTC); states: `start` (с pid),
-  `preflight`, `same-host`, `wait-idle`, `restarting`, `wait-ready`,
-  `verifying`; финальная строка `done rc=0` / `failed rc=<N> <reason>`.
-  Лог — `/tmp/llm-rig/llama-cpp-restart.log`. Опрос координатором:
-  повторное чтение файла между шагами, до финальной строки.
+  `<ts> <state> <detail>` (часы — MSK (UTC+3)); states: `start` (с pid),
+  `preflight`, `same-host`, `wait-idle`, `restarting`/`stopping`/`starting`,
+  `check`, `wait-ready`, `verifying`; финальная строка `done rc=0` /
+  `failed rc=<N> <reason>`. Лог — `/tmp/llm-rig/llama-cpp-restart.log`.
+  Опрос координатором: повторное чтение файла между шагами, до финальной
+  строки.
 
 ## Взаимодействие с юнитом / watcher
 
