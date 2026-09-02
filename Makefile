@@ -42,6 +42,9 @@ LLAMA_HOST ?= 127.0.0.1
 LLM_NFS_SERVER ?= 127.0.0.1
 LLAMA_PORT ?= 8080
 LLAMA_URL = http://$(LLAMA_HOST):$(LLAMA_PORT)
+LLAMA_MODEL ?= default
+LLAMA_KEYS_FILE ?= /etc/llama/llama-cpp-keys.txt
+OPENCODE_CONFIG ?=
 
 # image references: single source of truth for names/tags
 NVIDIA_BASE_IMAGE      = nvidia-base:$(BASE_IMAGE_TAG)
@@ -375,8 +378,8 @@ systemd:
 	$(CURDIR)/scripts/sysconfig-gen.sh $(HOST_ROOT)/etc/sysconfig lact-autoswitch \
 	  --build LACT_AUTOSWITCH_IMAGE=$(NVIDIA_LACT_AUTOSWITCH_IMAGE) \
 	  --default LLAMA_URL=$(LLAMA_URL) \
-	  --default LLAMA_MODEL=default \
-	  --default LLAMA_KEYS_FILE=/etc/llama/llama-cpp-keys.txt \
+	  --default LLAMA_MODEL=$(LLAMA_MODEL) \
+	  --default LLAMA_KEYS_FILE=$(LLAMA_KEYS_FILE) \
 	  --default KEY_MARKER=lact-autoswitch \
 	  --default POLL_INTERVAL=5 \
 	  --default THERMAL_EVERY=3 \
@@ -396,3 +399,25 @@ systemd:
 	  --default LLAMA_SHM_SIZE=64g
 	$(SYSTEMDCTL) daemon-reload
 	$(SYSTEMDCTL) enable nvidia-kmod.service nvidia-card-setting.service llama-cpp.service var-local-llm.mount lact-autoswitch.service llama-cpp-watcher.service
+
+# Безопасный рестарт/стоп/старт живого llama-cpp-сервера (Этап 25).
+# Скрипт исполняется в шелле toolbx через setsid -f (self-healing:
+# переживает сессию); хост — через CRE/chroot, как в systemd-таргете.
+# Протокол/состояния: LIVE-SERVER.md.
+MODE ?= restart
+IDLE_TIMEOUT ?= 30
+READY_TIMEOUT ?= 600
+VERIFY_REQUEST ?=
+RESTART_LOG ?= /tmp/llm-rig/llama-cpp-restart.log
+
+llama-cpp-restart:
+	[ -f local.mk ] || { echo "ERROR: no local.mk (cp local.mk.example local.mk, fill in values)" >&2; exit 1; }
+	mkdir -p $(dir $(RESTART_LOG))
+	setsid -f env CRE=$(CRE) HOST_ROOT=$(HOST_ROOT) SYSTEMDCTL=$(SYSTEMDCTL) \
+	  LLAMA_URL=$(LLAMA_URL) LLAMA_MODEL=$(LLAMA_MODEL) \
+	  LLAMA_KEYS_FILE=$(LLAMA_KEYS_FILE) LLAMA_CONTAINER=$(LLAMA_CPP) \
+	  OPENCODE_CONFIG=$(OPENCODE_CONFIG) \
+	  ./scripts/llama-cpp-restart.sh $(MODE) --idle-timeout $(IDLE_TIMEOUT) \
+	  --ready-timeout $(READY_TIMEOUT) $(if $(VERIFY_REQUEST),--verify-request $(VERIFY_REQUEST)) \
+	  < /dev/null >> $(RESTART_LOG) 2>&1
+	@echo "llama-cpp-restart: started (log=$(RESTART_LOG), status=/tmp/llm-rig/llama-cpp-restart.status)"

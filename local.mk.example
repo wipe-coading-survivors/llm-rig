@@ -22,3 +22,8 @@ LLM_NFS_SERVER = 192.0.2.2
 # /usr/local/cuda-installed.txt):
 # CUDA_DEVEL_SET = cuda-minimal-build-13-3-<ver>-<rel>.x86_64 ...
 # CUDA_RUNTIME_SET = cuda-cudart-13-3-<ver>-<rel>.x86_64 ...
+
+# Opencode-конфиг сессии (опционал, Этап 25): нестандартный путь
+# (например, в репо .opencode/). Без переменной скрипт llama-cpp-restart.sh
+# ищет opencode.json{,c} в корне репо и в ~/.config/opencode/.
+# OPENCODE_CONFIG = /path/to/opencode.jsonc

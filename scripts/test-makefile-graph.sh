@@ -235,7 +235,7 @@ expect_no_from() {
 # --- 1. make -n: syntax of all active targets ---
 for t in nvidia-base kernel-devel kernel-redist kmod-oss kmod nvidia-redist-drv lact-redist \
          nvidia-xorg nvidia-cuda-devel nvidia-cuda-libs nvidia-nccl-devel \
-          nvidia-nccl-libs nvidia-lact nvidia-lact-autoswitch nvidia-nccl llama-cpp-cuda llama-cpp-cuda-debug clean systemd ; do
+          nvidia-nccl-libs nvidia-lact nvidia-lact-autoswitch nvidia-nccl llama-cpp-cuda llama-cpp-cuda-debug clean systemd llama-cpp-restart ; do
     rc=0
     make -C "$repo_root" -n -s "$t" CRE="$tmp/cre" \
         NVIDIA_DRV_VER=test NVIDIA_CUDA_VER=test KVER=test-kver BUILDER_HOST=test-host \
@@ -1119,6 +1119,60 @@ expect_make_rc "kernel-redist (unreachable) rc=2" 2
 
 make_target kernel-redist KVER=$kver_test KOJI_BASE_URL=http://127.0.0.1:1 FORCE=1
 expect_make_rc "kernel-redist (unreachable, FORCE) rc=2" 2
+
+# --- 24. llama-cpp-restart (recipe plumbing; setsid stubbed — скрипт не запускается) ---
+mkdir -p "$tmp/setsid-stub"
+cat > "$tmp/setsid-stub/setsid" <<'SH'
+#!/bin/sh
+echo "stub-setsid $*" >> "${FAKE_SETSID_LOG:?}"
+exit 0
+SH
+chmod +x "$tmp/setsid-stub/setsid"
+FAKE_SETSID_LOG="$tmp/setsid.log"
+export FAKE_SETSID_LOG
+: > "$FAKE_SETSID_LOG"
+
+PATH="$tmp/setsid-stub:$PATH" make_target llama-cpp-restart MODE=check \
+    HOST_ROOT="$tmp/hostroot" SYSTEMDCTL="$tmp/fake-systemctl" RESTART_LOG="$tmp/restart.log"
+expect_make_rc "llama-cpp-restart rc=0" 0
+for frag in \
+    'stub-setsid -f env CRE=' \
+    "HOST_ROOT=$tmp/hostroot" \
+    "SYSTEMDCTL=$tmp/fake-systemctl" \
+    'LLAMA_URL=http://127.0.0.1:8080' \
+    'LLAMA_MODEL=default' \
+    'LLAMA_KEYS_FILE=/etc/llama/llama-cpp-keys.txt' \
+    'LLAMA_CONTAINER=llama-cpp' \
+    'OPENCODE_CONFIG= ./scripts/llama-cpp-restart.sh check --idle-timeout 30 --ready-timeout 600' ; do
+    if grep -qF -- "$frag" "$FAKE_SETSID_LOG"; then
+        ok "llama-cpp-restart recipe: $frag"
+    else
+        ko "llama-cpp-restart recipe: $frag" "in stub-setsid log" "$(cat "$FAKE_SETSID_LOG")"
+    fi
+done
+if printf '%s' "$make_out" | grep -qF "llama-cpp-restart: started (log=$tmp/restart.log"; then
+    ok "llama-cpp-restart: started-echo"
+else
+    ko "llama-cpp-restart: started-echo" "echo with RESTART_LOG" "make out: $make_out"
+fi
+
+# fail-loud: no local.mk -> отказ до setsid
+rm -f "$repo_root/local.mk"
+: > "$FAKE_SETSID_LOG"
+PATH="$tmp/setsid-stub:$PATH" make_target llama-cpp-restart MODE=check \
+    HOST_ROOT="$tmp/hostroot" SYSTEMDCTL="$tmp/fake-systemctl" RESTART_LOG="$tmp/restart.log"
+expect_make_rc "llama-cpp-restart fail-loud rc=2 (no local.mk)" 2
+if printf '%s' "$make_out" | grep -qF -- "ERROR: no local.mk"; then
+    ok "llama-cpp-restart fail-loud message"
+else
+    ko "llama-cpp-restart fail-loud message" "make output contains: ERROR: no local.mk" "make out: $make_out"
+fi
+if [ -s "$FAKE_SETSID_LOG" ]; then
+    ko "llama-cpp-restart fail-loud: setsid not run" "empty stub log" "$(cat "$FAKE_SETSID_LOG")"
+else
+    ok "llama-cpp-restart fail-loud: setsid not run"
+fi
+printf 'LLAMA_HOST = 127.0.0.1\nLLM_NFS_SERVER = 127.0.0.1\n' > "$repo_root/local.mk"
 
 echo "# pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
