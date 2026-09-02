@@ -11,8 +11,8 @@ ARG CUDA_VER
 ARG NCCL_DEVEL_IMAGE_ID
 
 RUN \
-  --mount=type=bind,from=nccl-src,source=/opt/cuda-${CUDA_VER},target=/mnt/nccl \
+  --mount=type=bind,from=nccl-src,source=/usr/local/cuda-${CUDA_VER},target=/mnt/nccl \
   set -euxo pipefail ; \
-  cp -aP /mnt/nccl/lib64/libnccl.so* /opt/cuda-${CUDA_VER}/lib64/ && \
+  cp -aP /mnt/nccl/lib64/libnccl.so* /usr/local/cuda-${CUDA_VER}/lib64/ && \
   ldconfig && \
   ldconfig -p | grep -q libnccl

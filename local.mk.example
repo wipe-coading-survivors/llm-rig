@@ -1,8 +1,24 @@
 # local.mk — machine-local values.
 # cp local.mk.example local.mk и заполнить реальными значениями.
-# local.mk gitignored; сборка образов работает без него,
-# `make systemd` — fail-loud.
-# Плейсхолдеры — RFC 5737 TEST-NET-1 (192.0.2.0/24).
+# local.mk gitignored; сборка образов работает без него
+# (REPO_BASE_URL опционален: без него nvidia-base использует
+# стандартные репо base-образа), `make systemd` — fail-loud.
+# Плейсхолдеры — RFC 5737 TEST-NET-1 (192.0.2.0/24) и example.com
+# (test-no-sensitive: реальные значения local.mk не должны
+# встречаться в tracked-файлах, в т.ч. в этом примере).
+
+# Опционально: своё Fedora-зеркало — nvidia-base качает из него
+# local.repo (без переменной — стандартные репо base-образа).
+# Дефолт Makefile, пока переменная не была machine-local.
+REPO_BASE_URL = http://mirror.example.com
 
 LLAMA_HOST = 192.0.2.1
 LLM_NFS_SERVER = 192.0.2.2
+
+# CUDA toolkit (этап 24): по умолчанию dnf ставит пакеты серии
+# NVIDIA_CUDA_VER (самый свежий release серии). Точный патч —
+# override в local.mk: список полных NEVRA (без суффикса .rpm;
+# фактически установленные NEVRA собранного образа — в
+# /usr/local/cuda-installed.txt):
+# CUDA_DEVEL_SET = cuda-minimal-build-13-3-<ver>-<rel>.x86_64 ...
+# CUDA_RUNTIME_SET = cuda-cudart-13-3-<ver>-<rel>.x86_64 ...

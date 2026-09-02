@@ -41,8 +41,8 @@ CA=llama-block3-a2
 CB=llama-block3-b2
 CC=llama-block3-c2
 STUB=llama-cpu-stub
-PROD_IMG=localhost/llama-cpp-cuda:13.2
-DEV_IMG=localhost/llama-cpp-cuda-debug:13.2
+PROD_IMG=localhost/llama-cpp-cuda:13.3
+DEV_IMG=localhost/llama-cpp-cuda-debug:13.3
 DRVREADY=debug/repro-llama-block3-driver-reloaded
 STAGE_START=${STAGE_START:-a2}
 FORCE_C2=${FORCE_C2:-0}
@@ -336,7 +336,7 @@ launch_b2() {
     -v /var/local/llm/gguf-models:/models \
     -p 8080:8080 \
     -e LLAMA_LOG_TIMESTAMPS=1 "$@" \
-    --entrypoint /opt/cuda/bin/compute-sanitizer \
+    --entrypoint /usr/local/cuda/bin/compute-sanitizer \
     "$DEV_IMG" \
       --tool memcheck --launch-timeout 1800 --error-exitcode 42 --print-limit 256 \
       /app/llama-server --port 8080 --host 0.0.0.0 \

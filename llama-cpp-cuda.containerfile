@@ -22,7 +22,7 @@ WORKDIR /llama
 
 COPY . . 
 
-ARG NVCC=/opt/cuda/bin/nvcc
+ARG NVCC=/usr/local/cuda/bin/nvcc
 
 #    -DGGML_NATIVE=OFF \
 RUN \
@@ -36,7 +36,7 @@ RUN \
     -DGGML_CUDA=ON \
     -DGGML_CUDA_FORCE_MMQ=ON \
     -DGGML_CUDA_NCCL=ON \
-    -DNCCL_ROOT=/opt/cuda \
+    -DNCCL_ROOT=/usr/local/cuda \
     -GNinja \
   && \
   cmake --build build --parallel $(nproc)

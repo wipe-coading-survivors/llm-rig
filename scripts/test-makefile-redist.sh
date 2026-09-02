@@ -78,7 +78,7 @@ case "${1:-}" in
                 --build-arg)
                     shift
                     case "${1:-}" in
-                        DRIVER_URL=*|CUDA_URL=*) url=${1#*=} ;;
+                        DRIVER_URL=*) url=${1#*=} ;;
                         REDIST_SIZE=*) size=${1#*=} ;;
                         REDIST_ETAG=*) etag=${1#*=} ;;
                     esac
@@ -206,20 +206,6 @@ expect_log_lines "offline no image does not build" 3
 make_target nvidia-redist-drv FORCE=1 NVIDIA_DRV_VER=test NVIDIA_DRV_RUN_URL="http://127.0.0.1:1/unreachable"
 expect_make_failed "offline FORCE -> error"
 expect_log_lines "offline FORCE does not build" 3
-
-rm -f "$FAKE_STATE" "$FAKE_LOG"
-make_target nvidia-redist-cuda NVIDIA_CUDA_VER=test NVIDIA_CUDA_URL="$url"
-expect_make_rc "cuda no image -> build" 0
-expect_log_lines "cuda build recorded once" 1
-expect_log_contains "cuda build uses CUDA_URL" "--build-arg CUDA_URL=$url"
-expect_log_contains "cuda build uses REDIST_SIZE" "--build-arg REDIST_SIZE=$size"
-expect_log_contains "cuda build uses REDIST_ETAG" "--build-arg REDIST_ETAG=$etag"
-expect_log_contains "cuda tags test image" "-t nvidia-redist-cuda:test"
-
-make_target nvidia-redist-cuda NVIDIA_CUDA_VER=test NVIDIA_CUDA_URL="$url"
-expect_make_rc "cuda labels match -> up-to-date" 0
-expect_output_contains "cuda prints up to date" "nvidia-redist-cuda:test up to date"
-expect_log_lines "cuda second run does not build" 1
 
 echo "# pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
