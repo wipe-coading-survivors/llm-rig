@@ -94,7 +94,7 @@
 
 Замеры 02.09 (live-окно Этапа 25, отчёт
 `docs/superpowers/reports/2026-09-02-stage25-safe-restart.md`; 27B q8,
-mlock, 4×GPU tensor split, page cache тёплый):
+mlock, 5×GPU tensor split, page cache тёплый):
 
 - t0→t1 даунтайм (старт рестарта → первый `/health` ok): **137 s**
   (включает stop-hang 90 s → SIGABRT и упавший старт №1 exit 125 +

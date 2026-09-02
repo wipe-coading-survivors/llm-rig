@@ -110,7 +110,7 @@ prompt 75 токенов) + `make llama-cpp-restart MODE=restart IDLE_TIMEOUT=5`
 Числа (каждое — с длиной контекста на момент измерения):
 
 - **t0→t1 даунтайм = 137 s** (запросов нет; контекст не применим).
-- **t1→t2 загрузка модели = 21 s** (27B q8, mlock, 4×GPU tensor split,
+- **t1→t2 загрузка модели = 21 s** (27B q8, mlock, 5×GPU tensor split,
   page cache тёплый; запросов ещё нет).
 - **t3 verify**: prompt **58 токенов** — prefill 1037.6 ms (55.90 t/s),
   генерация 8 токенов 404.6 ms (17.30 t/s, холодные CUDA graphs:
