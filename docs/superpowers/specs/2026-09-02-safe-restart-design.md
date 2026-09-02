@@ -1,7 +1,10 @@
 # Спека: безопасный рестарт живого сервера llama-cpp (Этап 25)
 
 - Дата: 02.09.2026
-- Статус: черновик (ожидает ревью)
+- Статус: раунд ревью 1 применён (02.09.2026): одно-модельный скоуп
+  (F13/не цели), ссылки по именам, времена с длинами контекста,
+  `journalctl` вместо «podman logs накапливается» (F14),
+  `OPENCODE_CONFIG` в local.mk (§4)
 - Источник: `TODO.md`, Этап 25 (фоллоу-ап live-окна Этапа 24; урок `nohup` —
   отчёт `docs/superpowers/reports/2026-09-02-stage24-cuda-repo.md` §5)
 - Основа: брейншторм 02.09.2026 (дизайн утверждён пользователем) + live-
@@ -32,8 +35,9 @@ sysconfig, watcher, даунтайм) нет. Этап 25 закрывает э�
    ли мы» — оба ненадёжны: суб-агент стартует со свежим контекстом и не
    видит скилл-состояние координатора; «окно» — фаза, объявленная планом,
    а не машинно-определяемое состояние.
-3. `local.mk` — без новых переменных (анализ §4, решение пользователя
-   02.09.2026: не раздувать).
+3. `local.mk` — одна новая опциональная переменная
+   (анализ §4; решение пользователя 02.09.2026: не раздувать, но
+   действительно локальные значения — туда).
 4. Live-окно: in-flight-тест (abort) + полный рестарт с замером таймлайна;
    приёмка — сессия переживает рестарт.
 
@@ -44,6 +48,8 @@ sysconfig, watcher, даунтайм) нет. Этап 25 закрывает э�
   не виснет; закрытие пункта «Перенесено из архива» — отдельное решение по
   результатам live-окна.
 - Изменения watcher/юнитов/sysconfig-gen — только правила взаимодействия.
+- Сервер с несколькими моделями: проверки калиброваны под одну модель
+  (F13) — вне скоупа (YAGNI).
 - Ollama/jupyter (этапы 21/22), non-root (этап 26).
 
 ## Верифицированные факты (основания дизайна, 02.09.2026)
@@ -62,6 +68,8 @@ sysconfig, watcher, даунтайм) нет. Этап 25 закрывает э�
 | F10 | `llama-cpp-watcher.sh`: kill контейнера по zombie-сигнатуре; skip неактивного юнита (конвенция «осознанный стоп/обслуживание»); cooldown 120 s |
 | F11 | Makefile уже несёт `LLAMA_HOST ?= 127.0.0.1`, `LLAMA_PORT ?= 8080`, `LLAMA_URL`, `SYSTEMDCTL` (chroot `$(HOST_ROOT)` при toolbx), `LLAMA_CPP = llama-cpp`; sysconfig `lact-autoswitch` уже использует дефолты `LLAMA_MODEL=default` и `LLAMA_KEYS_FILE=/etc/llama/llama-cpp-keys.txt` — концепции существуют как проектные конвенции |
 | F12 | В toolbx доступны: bash, curl, jq, python3, flock, `setsid -f` (always fork) |
+| F13 | Сервер крутит **одну** модель (VRAM второй уже не позволяет — по заявлению пользователя 02.09.2026): все проверки (wait-idle, ready-gate, verify) корректны только для одно-модельного сервера с параметризуемым именем (`$LLAMA_MODEL`); для сервера с несколькими моделями — некорректны |
+| F14 | `podman-remote logs llama-cpp` — **только текущий контейнер**: первая строка лога = 93 ms после старта контейнера 09:01:29 (верифицировано 02.09.2026); юнитовый `ExecStartPre` `podman rm -f` уничтожает историю. Постоянная история — `journalctl -lu llama-cpp [--since]` (вывод сервера уходит в журнал юнита — watcher работает по нему, F10) |
 
 ## Дизайн
 
@@ -69,11 +77,11 @@ sysconfig, watcher, даунтайм) нет. Этап 25 закрывает э�
 
 Все три условия:
 
-1. хотя бы одно значение `"baseURL"` в opencode-конфиге
-   (`$HOME/.config/opencode/opencode.json{,c}`; извлечение всех значений
-   grep'ом — JSON-парсер не нужен: конфиг машинно-локальный, формат
-   стабилен) имеет host ∈ {`127.0.0.1`, `localhost`, `::1`} и порт =
-   `LLAMA_PORT`;
+1. хотя бы одно значение `"baseURL"` в opencode-конфиге сессии (источник
+   — §2: env `OPENCODE_CONFIG` либо поиск стандартных мест; извлечение
+   всех значений grep'ом — JSON-парсер не нужен: конфиг
+   машинно-локальный, формат стабилен) имеет host ∈ {`127.0.0.1`,
+   `localhost`, `::1`} и порт = `LLAMA_PORT`;
 2. контейнер `$(LLAMA_CPP)` запущен в CRE-контексте;
 3. опубликованный порт контейнера (`$(CRE) inspect`) = `LLAMA_PORT`.
 
@@ -87,6 +95,11 @@ sysconfig, watcher, даунтайм) нет. Этап 25 закрывает э�
 - **unknown** (опencode-конфиг не найден/не распознан) — консервативно:
   вести себя как yes (wait-idle + setsid), заметка в status.
 
+Охват (F13): правило и потоки §2 покрывают модель, указанную в
+`$LLAMA_MODEL`; для нашего одно-модельного сервера это весь сервер.
+Сервер с несколькими моделями — вне скоупа (YAGNI): wait-idle держит
+idle только именованную модель, ready-gate/verify проверяют только её.
+
 ### 2. `scripts/llama-cpp-restart.sh`
 
 bash, `set -u` (конвенция watcher). Значения — из env (выставляет
@@ -98,7 +111,10 @@ Makefile-таргет) либо дефолты: `CRE` (правило `no-cre-ha
 `/etc/llama/llama-cpp-keys.txt` — путь **на хосте**; из toolbx читается
 как `$HOST_ROOT$LLAMA_KEYS_FILE`), `LLAMA_CONTAINER`/`LLAMA_UNIT`
 (дефолт `llama-cpp`), `STATUS` (дефолт
-`/tmp/llm-rig/llama-cpp-restart.status`).
+`/tmp/llm-rig/llama-cpp-restart.status`), `OPENCODE_CONFIG` (опционален:
+явный путь к opencode-конфигу сессии — из `local.mk`; если не задан —
+поиск: `opencode.json{,c}` в корне репо →
+`$HOME/.config/opencode/opencode.json{,c}`, первый найденный).
 
 Режимы: `check` | `restart` | `stop` | `start`. Параметры:
 `--idle-timeout N` (дефолт 30 c), `--ready-timeout N` (дефолт 600 c),
@@ -153,8 +169,9 @@ Status-файл (протокол опроса координатором): ст
   `LLAMA_MODEL ?= default`,
   `LLAMA_KEYS_FILE ?= /etc/llama/llama-cpp-keys.txt` (F11: конвенции уже
   существуют в sysconfig lact-autoswitch — сюда поднимаются как
-  Makefile-переменные; override в `local.mk` возможен как для любых
-  переменных).
+  Makefile-переменные), `OPENCODE_CONFIG ?=` (пусто: скрипт ищет
+  стандартные места, §2; override — путь из `local.mk`). Override в
+  `local.mk` возможен как для любых переменных.
 - Таргет `llama-cpp-restart` (параметры `MODE` =
   restart|stop|start|check, дефолт `restart`; `IDLE_TIMEOUT=30`,
   `READY_TIMEOUT=600`, `VERIFY_REQUEST=`):
@@ -162,7 +179,8 @@ Status-файл (протокол опроса координатором): ст
   - рецепт: `setsid -f env CRE=$(CRE) HOST_ROOT=$(HOST_ROOT)
     SYSTEMDCTL=$(SYSTEMDCTL) LLAMA_URL=$(LLAMA_URL)
     LLAMA_MODEL=$(LLAMA_MODEL) LLAMA_KEYS_FILE=$(LLAMA_KEYS_FILE)
-    LLAMA_CONTAINER=$(LLAMA_CPP) ./scripts/llama-cpp-restart.sh $(MODE)
+    LLAMA_CONTAINER=$(LLAMA_CPP) OPENCODE_CONFIG=$(OPENCODE_CONFIG)
+    ./scripts/llama-cpp-restart.sh $(MODE)
     --idle-timeout $(IDLE_TIMEOUT) --ready-timeout $(READY_TIMEOUT)
     < /dev/null >> $(RESTART_LOG) 2>&1`, затем echo путей
     `RESTART_LOG`/STATUS. `setsid -f` (always fork, F12) — рецепт
@@ -177,9 +195,12 @@ Status-файл (протокол опроса координатором): ст
     хосте даже при CRE=podman-remote); хост достигается через CRE/chroot —
     как в `systemd`-таргете.
 
-### 4. `local.mk` — без новых переменных (анализ)
+### 4. `local.mk` — анализ (одна новая опциональная переменная)
 
-Машинно-зависимые значения, нужные скрипту, и их статус:
+Решение пользователя 02.09.2026: не раздувать local.mk; при этом
+`local.mk` и создан для машинно-локальных значений — если значение
+действительно локально, оно туда и относится. Машинно-зависимые значения,
+нужные скрипту, и их статус:
 
 | Значение | Где | Комментарий |
 |---|---|---|
@@ -187,19 +208,24 @@ Status-файл (протокол опроса координатором): ст
 | имя модели (`default`) | `LLAMA_MODEL ?= default` (Makefile) | конвенция F11; если на машине иная — override в `local.mk` существующим механизмом |
 | путь к ключам | `LLAMA_KEYS_FILE ?= /etc/llama/llama-cpp-keys.txt` (Makefile) | проектная конвенция (маунт `/etc/llama` зашит в юнит, F9), не машинно-зависимо |
 | имена контейнера/юнита | `LLAMA_CPP` (Makefile) | уже есть |
+| путь к opencode-конфигу сессии | `OPENCODE_CONFIG` (`local.mk`, опционально) | локален по сути: конфиг может жить в нестандартном месте (в т.ч. в репо, `.opencode/`); дефолт — поиск стандартных мест (§2), на этой машине override не нужен |
 
-Итог: `local.mk` и `local.mk.example` **не меняются** (решение
-пользователя 02.09.2026: не раздувать local.mk). Новые секретных значений
-нет → `test-no-sensitive` без изменений.
+Итог: `local.mk.example` — одна новая закомментированная строка
+(`# OPENCODE_CONFIG = <path>`, без реального значения); `local.mk`
+машины — без изменений (дефолт-поиск покрывает). Секретных значений нет
+→ `test-no-sensitive` без изменений.
 
 ### 5. `LIVE-SERVER.md` (корень репо, tracked, без секретов)
 
 ~70 строк, секции:
 
 1. Когда читать: деятельностный триггер — рестарт/стоп/старт, ключи,
-   sysconfig, контейнер/юнит, прод-логи (правило — `AGENTS.md`, §6).
+   sysconfig, контейнер/юнит, прод-логи (правило — `AGENTS.md`, секция
+   «Живой сервер (llama-cpp)»).
 2. Топология и факты: роутер :8080 → инстансы (порты не опубликованы, F4);
-   CRE/chroot/toolbx net=host (F2/F3); эндпоинты и какие ключевые
+   CRE/chroot/toolbx net=host (F2/F3); **одно-модельный сервер (F13):
+   проверки корректны только для него, имя модели — `$LLAMA_MODEL`;
+   много-модельный — вне скоупа (YAGNI)**; эндпоинты и какие ключевые
    (F5–F7); ключи: путь, парсинг, не писать в лог (F8).
 3. SAME_HOST: правило (§1) и что оно значит для сессии.
 4. Рестарт/стоп/старт: `make llama-cpp-restart MODE=...`; self-healing
@@ -211,9 +237,13 @@ Status-файл (протокол опроса координатором): ст
    (`make systemd` → рестарт).
 6. Числа: даунтайм (t0→t1), загрузка модели (t1→t2), verify (t3),
    ре-префилл первого запроса после рестарта (cache-ram пуст) — заполнить
-   после live-окна (пока: указатель на отчёт).
-7. Логи: указатель на секцию AGENTS.md «Логи llama-server (llama-cpp)» +
-   `podman-remote logs llama-cpp` накапливается между рестартами.
+   после live-окна (пока: указатель на отчёт). Каждое время — **с длиной
+   контекста (prompt-токены) на момент измерения**: длительность
+   префилла зависит от глубины контекста (не строго линейно, порядок
+   понятен).
+7. Логи: указатель на секцию AGENTS.md «Логи llama-server (llama-cpp)»;
+   постоянная история — `journalctl -lu llama-cpp [--since]` (F14);
+   `podman-remote logs llama-cpp` — только текущий контейнер (F14).
 
 ### 6. `AGENTS.md`
 
@@ -227,6 +257,13 @@ Status-файл (протокол опроса координатором): ст
 дебаг живого сервера покрывается тем же триггером (дебаг = работа с
 прод-логами/контейнером).
 
+Плюс фикс строки в секции AGENTS.md «Логи llama-server (llama-cpp)» по
+F14: «`podman-remote logs llama-cpp` накапливается между рестартами
+контейнера» → «`podman-remote logs llama-cpp` — только текущий
+контейнер (история — `journalctl -lu llama-cpp [--since]`)»; вторая часть
+строки («нумерация task в каждом новом instance начинается заново») —
+без изменений.
+
 ### 7. Тесты
 
 - `scripts/test-llama-cpp-restart.sh` (новый; ok/ko-конвенция репо):
@@ -236,8 +273,9 @@ Status-файл (протокол опроса координатором): ст
     `/v1/chat/completions` (200, для verify)) + PATH-stubs
     `podman` (ps/inspect) и `systemctl` (запись вызовов, rc 0); env:
     `CRE=podman`, `SYSTEMDCTL=systemctl`, `STATUS`/лог в tmp:
-    - `check` против mock: rc 0, статус SAME_HOST по mock-конфигу
-      opencode (временный `$HOME`);
+     - `check` против mock: rc 0, статус SAME_HOST по mock-конфигу
+       opencode (временный `$HOME`; отдельно — override
+       `OPENCODE_CONFIG`);
     - wait-idle: mock с `is_processing=true` + `--idle-timeout 2` → rc=3,
       вызова systemctl restart **нет**; переключение mock в idle → rc=0,
       restart вызван ровно один раз, затем verify 200;
@@ -256,10 +294,10 @@ Status-файл (протокол опроса координатором): ст
 
 | # | Риск | Митигация |
 |---|---|---|
-| R1 | Семантика `/health` роутера при загрузке модели неизвестна (F5) | Ready-gate — `/v1/models` loaded + verify, `/health` не единственный; live-окно замеряет и фиксирует в LIVE-SERVER.md §6 |
+| R1 | Семантика `/health` роутера при загрузке модели неизвестна (F5) | Ready-gate — `/v1/models` loaded + verify, `/health` не единственный; live-окно замеряет и фиксирует в `LIVE-SERVER.md`, секция «Числа» |
 | R2 | Долгая генерация дольше `--idle-timeout` (30 c) | rc=3 abort без форса (stop/restart-hang при in-flight, архив); повтор после завершения хода либо явное увеличение `IDLE_TIMEOUT` оператором |
 | R3 | Сессия умирает в процессе рестарта | По дизайну: `setsid -f` + status-файл — скрипт доводит сервер до готовности без сессии (self-healing); координатор возвращается и опрашивает status |
-| R4 | Opencode-конфиг в другом месте/формате | Правило использует только grep `"baseURL"` + host/порт; нет конфига → SAME_HOST=unknown → консервативно (wait-idle + setsid), заметка в status |
+| R4 | Opencode-конфиг в другом месте/формате | Правило использует только grep `"baseURL"` + host/порт; источник конфига — `OPENCODE_CONFIG` (local.mk) либо поиск стандартных мест (§2); нет конфига → SAME_HOST=unknown → консервативно (wait-idle + setsid), заметка в status |
 | R5 | `/tmp/llm-rig` — per-boot, при reboot путь пуст | Не критично: операции короткоживущие; скрипт `mkdir -p` при старте |
 | R6 | Утечка ключа (лог, argv, /proc) | Ключ — только из файла в рантайме, в `Authorization`-заголовке; без `curl -v` на keyed-эндпоинтах; hermetic-тест проверяет отсутствие ключа в логе/STATUS |
 
@@ -277,25 +315,28 @@ Status-файл (протокол опроса координатором): ст
 4. Прогон 3 (полный рестарт, замеры): долгая генерация + `MODE=restart
    IDLE_TIMEOUT=120` → скрипт ждёт завершения генерации, затем рестарт:
    t0 (старт) → t1 (первый `/health` ok) → t2 (`/v1/models` loaded) →
-   t3 (verify 200, tok/s). Приёмка: rc=0, verify 200, **сессия
+   t3 (verify 200, tok/s); каждое время — с длиной контекста (prompt-
+   токены) на момент измерения. Приёмка: rc=0, verify 200, **сессия
    координатора продолжает работу после рестарта** (написание отчёта —
    сама по себе приёмка), замечен ре-префилл первого запроса.
 5. Статика: `scripts/test-llama-cpp-restart.sh` + полный тест-сьют —
    зелёные.
 6. Post: отчёт `docs/superpowers/reports/2026-09-0X-stage25-safe-restart.md`
-   (таймлайн, числа → LIVE-SERVER.md §6, семантика `/health` → R1),
+   (таймлайн, числа → `LIVE-SERVER.md` «Числа», семантика `/health` → R1),
    чекбоксы `TODO.md`, finishing-a-development-branch (merge в `main`).
 
 ## Критерии готовности
 
 - файлы: `scripts/llama-cpp-restart.sh`,
   `scripts/test-llama-cpp-restart.sh`, `LIVE-SERVER.md`, `Makefile`
-  (2 переменные + таргет `llama-cpp-restart`; sysconfig-gen
+  (3 переменные + таргет `llama-cpp-restart`; sysconfig-gen
   lact-autoswitch на `$(LLAMA_MODEL)`/`$(LLAMA_KEYS_FILE)`),
-  `AGENTS.md` (секция), `scripts/test-makefile-graph.sh` (pin);
-  `local.mk`/`local.mk.example` без изменений;
+  `AGENTS.md` (секция «Живой сервер» + фикс лог-строки по F14),
+  `local.mk.example` (закомментированная строка `OPENCODE_CONFIG`),
+  `scripts/test-makefile-graph.sh` (pin); `local.mk` машины — без
+  изменений;
 - тест-сьют зелёный (включая новый hermetic-тест);
-- live-окно: прогоны 1–3 по протоколу, сессия пережила рестарт, числа в
-  `LIVE-SERVER.md` §6;
+- live-окно: прогоны 1–3 по протоколу, сессия пережила рестарт, числа
+  (с длинами контекста) в `LIVE-SERVER.md` «Числа»;
 - `TODO.md` Этап 25: чекбоксы отмечены;
 - finishing: merge `stage25-safe-restart` → `main`.
