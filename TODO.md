@@ -49,17 +49,23 @@ LLM (NVIDIA): модули ядра, драйвер, OC/авто-свитч, р�
       (02.09.2026, отчёт `docs/superpowers/reports/2026-09-02-stage24-cuda-repo.md`)
 
 ### 25. Безопасный рестарт живого сервера (фоллоу-ап live-окна Этапа 24)
-- [ ] скрипт рестарта llama-cpp из opencode (сессию держит тот же
-      сервер): `setsid`, не `nohup` (nohup-процесс отваливается по
-      таймауту tool-вызова opencode); алгоритм: 1) ждать завершения
-      инференса (параметр, дефолт 30 c), 2) рестарт или выключить
-      (ожидание) / включить, 3) curl-запрос к модели (параметр —
-      модель/запрос); наработки — в архиве (nvidia-aiml,
-      docs/superpowers)
-- [ ] `AGENTS.md-local` (машинозависимое, gitignored, не в репо): как
-      работать с живым сервером llama-cpp (рестарт, API-ключи в
-      `/etc/llama/llama-cpp-keys.txt` — файл с комментариями, sysconfig,
-      watcher, даунтайм/загрузка модели)
+Спека: `docs/superpowers/specs/2026-09-02-safe-restart-design.md`
+(наработки по рестарту — в архиве, nvidia-aiml/docs/superpowers)
+- [x] `scripts/llama-cpp-restart.sh` (check/restart/stop/start) +
+      `make llama-cpp-restart`: wait-idle (поллинг `/slots`
+      `is_processing`, параметр, дефолт 30 c → abort rc=3), `setsid -f`
+      (self-healing: переживает сессию), правило SAME_HOST (opencode
+      baseURL + CRE-контейнер + порт), ready-gate `/v1/models` loaded,
+      verify-curl; hermetic-тест (mock-сервер + PATH-stubs)
+- [x] `LIVE-SERVER.md` (корень, tracked, без секретов): работа с живым
+      сервером (эндпоинты, ключи `/etc/llama/llama-cpp-keys.txt`,
+      sysconfig, watcher, даунтайм/загрузка модели) + правило в
+      `AGENTS.md` (деятельностный триггер)
+- [x] `local.mk`: только опциональная `OPENCODE_CONFIG` (анализ —
+      спека, секция «local.mk»)
+- [x] live-окно: in-flight-тест (abort rc=3) + полный рестарт с замером
+      таймлайна; приёмка — сессия переживает рестарт (02.09, отчёт
+      `docs/superpowers/reports/2026-09-02-stage25-safe-restart.md`)
 
 ### 26. Non-root окружение (пока на подумать, без спеки)
 - [ ] разработку вести от имени обычного пользователя (не root)
@@ -70,6 +76,8 @@ LLM (NVIDIA): модули ядра, драйвер, OC/авто-свитч, р�
 
 - [ ] MTP A/B perf-тест (Этап 12, целиком)
 - [ ] vendor-патч llama.cpp in-process exit (Этап 10, опц.)
-- [ ] stop/restart-hang при in-flight task (След-Этап 14)
+- [ ] stop/restart-hang при in-flight task (След-Этап 14;
+      воспроизведён в live-окне Этапа 25: stop-hang 90 s → SIGABRT при
+      release task в ту же секунду SIGTERM; скрипт Этапа 25 его поглощает)
 - [ ] эскалация по числу child-крахов (Этап 10)
 - [ ] lact-autoswitch: POLL_INTERVAL 5 → 10 s (Этап 16, опц.)
