@@ -49,17 +49,21 @@ LLM (NVIDIA): модули ядра, драйвер, OC/авто-свитч, р�
       (02.09.2026, отчёт `docs/superpowers/reports/2026-09-02-stage24-cuda-repo.md`)
 
 ### 25. Безопасный рестарт живого сервера (фоллоу-ап live-окна Этапа 24)
-- [ ] скрипт рестарта llama-cpp из opencode (сессию держит тот же
-      сервер): `setsid`, не `nohup` (nohup-процесс отваливается по
-      таймауту tool-вызова opencode); алгоритм: 1) ждать завершения
-      инференса (параметр, дефолт 30 c), 2) рестарт или выключить
-      (ожидание) / включить, 3) curl-запрос к модели (параметр —
-      модель/запрос); наработки — в архиве (nvidia-aiml,
-      docs/superpowers)
-- [ ] `AGENTS.md-local` (машинозависимое, gitignored, не в репо): как
-      работать с живым сервером llama-cpp (рестарт, API-ключи в
-      `/etc/llama/llama-cpp-keys.txt` — файл с комментариями, sysconfig,
-      watcher, даунтайм/загрузка модели)
+Спека: `docs/superpowers/specs/2026-09-02-safe-restart-design.md`
+(наработки по рестарту — в архиве, nvidia-aiml/docs/superpowers)
+- [ ] `scripts/llama-cpp-restart.sh` (check/restart/stop/start) +
+      `make llama-cpp-restart`: wait-idle (поллинг `/slots`
+      `is_processing`, параметр, дефолт 30 c → abort rc=3), `setsid -f`
+      (self-healing: переживает сессию), правило SAME_HOST (opencode
+      baseURL + CRE-контейнер + порт), ready-gate `/v1/models` loaded,
+      verify-curl; hermetic-тест (mock-сервер + PATH-stubs)
+- [ ] `LIVE-SERVER.md` (корень, tracked, без секретов): работа с живым
+      сервером (эндпоинты, ключи `/etc/llama/llama-cpp-keys.txt`,
+      sysconfig, watcher, даунтайм/загрузка модели) + правило в
+      `AGENTS.md` (деятельностный триггер)
+- [ ] `local.mk`: без новых переменных (анализ — спека §4)
+- [ ] live-окно: in-flight-тест (abort rc=3) + полный рестарт с замером
+      таймлайна; приёмка — сессия переживает рестарт
 
 ### 26. Non-root окружение (пока на подумать, без спеки)
 - [ ] разработку вести от имени обычного пользователя (не root)
