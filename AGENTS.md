@@ -99,6 +99,13 @@
 ключи, sysconfig, контейнер/юнит, прод-логи) — прочитать
 `LIVE-SERVER.md`.
 
+- VRAM: 5×RTX 3060 12GB = 60GB суммарно (tensor-split). `ctx-size 430000`
+  (2×215k) — рабочий потолок (58.3/60GB); `470000` — OOM в обоих режимах
+  (unified и non-unified, 2026-09-02). `cache-ram 131072` (128GB) —
+  верифицирован: restore без ре-префилла, 0 эвикшенов при 3 крупных
+  сессиях. Отчёт:
+  `docs/superpowers/reports/2026-09-02-cache-ram-verification.md`.
+
 ## Процесс: работа под superpowers (координатор)
 
 [COORDINATOR.md](COORDINATOR.md) — читается координатором при старте работы по
