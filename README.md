@@ -72,4 +72,5 @@ sysconfig с дефолтами (OC-параметры, `LLAMA_*`: образ, �
 
 ```sh
 for t in scripts/test-*.sh; do sh "$t" || break; done
+python3 scripts/test-lact-autoswitch.py   # LACT-хелпер (TAP)
 ```

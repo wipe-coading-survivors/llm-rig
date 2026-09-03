@@ -34,6 +34,14 @@ TIME_SAFE_BACK_DUR = int(os.environ.get("TIME_SAFE_BACK_DUR", "300"))
 TIME_DOWN_LACT = int(os.environ.get("TIME_DOWN_LACT", "60"))
 FALLBACK_PL = int(os.environ.get("FALLBACK_PL", "120"))
 HISTORY_LINES = int(os.environ.get("HISTORY_LINES", "2000"))
+CRASH_PIN_COUNT = int(os.environ.get("CRASH_PIN_COUNT", "3"))
+CRASH_PIN_WINDOW = int(os.environ.get("CRASH_PIN_WINDOW", "600"))
+THERMAL_PIN_COUNT = int(os.environ.get("THERMAL_PIN_COUNT", "3"))
+THERMAL_PIN_WINDOW = int(os.environ.get("THERMAL_PIN_WINDOW", "1800"))
+PIN_LOG_EVERY = int(os.environ.get("PIN_LOG_EVERY", "300"))
+PIN_FILE = os.environ.get("PIN_FILE", "/run/lact-autoswitch/pin")
+CRASH_EVENTS_FILE = os.environ.get(
+    "CRASH_EVENTS_FILE", "/run/lact-autoswitch/crashes")
 
 HISTORY_FILE = "/run/lact-autoswitch/history.log"
 LACT_BIN = "/usr/bin/lact"
@@ -145,6 +153,85 @@ def decide_target(socket_up, overtemp, auth_streak, load_state,
     if load_state == "IDLE":
         return "idle"
     return "Default"
+
+
+def read_crash_events(path, now, window):
+    """[ts] integer lines with now-window < ts <= now; missing file ->
+    [], non-integer lines ignored (watcher is the only writer)."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        try:
+            ts = int(line.strip())
+        except ValueError:
+            continue
+        if now - window < ts <= now:
+            out.append(ts)
+    return out
+
+
+def decide_pin(crash_ts, now, crash_count, crash_window,
+               thermal_ts, thermal_count, thermal_window, pinned):
+    """(pin, reason, count, window); crashes take priority over
+    thermal; no retrigger while pinned."""
+    if pinned:
+        return False, None, 0, 0
+    recent_c = [t for t in crash_ts if now - crash_window < t <= now]
+    if len(recent_c) >= crash_count:
+        return True, "crashes", len(recent_c), crash_window
+    recent_t = [t for t in thermal_ts if now - thermal_window < t <= now]
+    if len(recent_t) >= thermal_count:
+        return True, "thermal", len(recent_t), thermal_window
+    return False, None, 0, 0
+
+
+def parse_pin_file(path):
+    """(ts, n, reason) from the pin file; missing/empty/unparseable ->
+    (None, None, 'external'); partial parse is best-effort."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            line = f.readline().strip()
+    except OSError:
+        return None, None, "external"
+    if not line:
+        return None, None, "external"
+    ts, n, reason = None, None, "external"
+    for field in line.split():
+        k, _, v = field.partition("=")
+        if k == "ts":
+            try:
+                ts = int(v)
+            except ValueError:
+                pass
+        elif k == "n":
+            try:
+                n = int(v)
+            except ValueError:
+                pass
+        elif k == "reason":
+            reason = v
+    return ts, n, reason
+
+
+def pin_log_due(now, last_block_log, every):
+    """Block-log rate limit: first immediately, then >= every apart."""
+    if last_block_log is None:
+        return True
+    return now - last_block_log >= every
+
+
+def write_pin_file(path, reason, count, window, ts, n):
+    """Atomic pin write (tmp + os.replace): one 'reason=... count=...
+    window=... ts=... n=...' line."""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("reason=%s count=%d window=%d ts=%d n=%d\n"
+                % (reason, count, window, int(ts), n))
+    os.replace(tmp, path)
 
 
 class History:
