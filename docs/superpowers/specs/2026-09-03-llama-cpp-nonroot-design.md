@@ -152,8 +152,10 @@ fi
   маунт `/etc/llama:/llama:ro` + `--models-preset /llama/llama.ini`
   (остаётся `--privileged` — debug-контейнер). Стубы (plain/router) —
   без изменений (свой ini / явные args, root).
-- `debug/llama.ini` — копия live ini: `api-key-file` →
-  `/llama/llama-cpp-keys.txt` (последовательность с §3).
+- `debug/llama.ini` — **не трогаем**: не используется ни в одном
+  скрипте (0 ссылок), значения расходятся с live ini — артефакт;
+  `api-key-file=/root/llama/...` в нём согласован с root-контейнерами,
+  которые его (потенциально) бы читали.
 
 ### 5. Тесты
 
@@ -243,7 +245,7 @@ fi
 
 - Файлы: `resources/llama/llama-cpp.service`, `Makefile` (3
   sysconfig-дефолта + keys-chmod guard), `debug/llama-run.sh`,
-  `debug/repro-llama-block3-run.sh` (C2), `debug/llama.ini`,
+  `debug/repro-llama-block3-run.sh` (C2),
   `scripts/test-systemd-units.sh`, `scripts/test-makefile-graph.sh`,
   `scripts/test-debug-scripts.sh`, `LIVE-SERVER.md`, `TODO.md`, отчёт;
   containerfile — без изменений (F2);
