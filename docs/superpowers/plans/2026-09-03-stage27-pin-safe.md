@@ -148,6 +148,7 @@ run_watcher "$tmp/lines-double.txt" active
 check_events "crash events: duplicate line -> single event" 1
 
 # 4.9 guard: юнит inactive -> ни kill, ни события
+reset_kill_log
 rm -f "$CRASH_EVENTS_FILE"
 run_watcher "$tmp/lines-pattern.txt" inactive
 check_kills "guard: unit inactive -> no kill (events)" 0
