@@ -599,7 +599,10 @@ def main():
                 log("pin: transition to Default blocked (%s) - fix the root cause: OC under an unresolved issue degrades the GPU"
                     % reason)
                 last_block_log = now_ts
-            target = "HOLD"
+            if fallback_on:
+                target = "safe"
+            else:
+                target = "HOLD"
             reason = "pin-blocked"
 
         # --- apply ---
