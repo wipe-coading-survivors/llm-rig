@@ -247,7 +247,11 @@ git commit -m "watcher: append crash events to /run/lact-autoswitch/crashes (sta
 
 В `scripts/test-lact-autoswitch.py`, в конец `try:`-блока (перед
 `finally:`/очисткой tmpd — там, где заканчиваются существующие
-`check(...)`), добавить:
+`check(...)`), добавить. Уточнение (ruling R5): блок оборачивается в
+`try: … except AttributeError as e: ko(pin_desc, "pin functions
+defined", "AttributeError: %s" % e)` — конвенция файла (client-shim-блок
+обёрнут так же): внешний `try:` без `except`, без guard RED-прогон
+погибает traceback'ом до TAP-сводки. 17 чеков внутри — дословно:
 
 ```python
 # --- stage 27: pin (spec 2026-09-03-stage27-pin-safe-design.md) ---
