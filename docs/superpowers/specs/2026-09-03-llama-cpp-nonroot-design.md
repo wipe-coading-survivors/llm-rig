@@ -1,0 +1,246 @@
+# Спека: llama-cpp non-root (Этап 26)
+
+- Дата: 03.09.2026
+- Статус: дизайн утверждён пользователем (03.09.2026); A/B `LLAMA_MEM`
+  (128/140/160) в live-окне — решение пользователя 03.09.2026
+- Источник: `TODO.md`, Этап 26 (решение 03.09: откат на root
+  build/deploy/debug; из «Non-root окружения» остаётся только запуск
+  контейнера `llama-cpp` non-root)
+- Основа: брейншторм 03.09.2026 + live-верификация фактов F1–F15 на
+  хосте (toolbx, CRE=podman-remote)
+- Связь: после ревью — план (writing-plans) → SDD → live-окно →
+  finishing (merge в `main`)
+
+## Контекст
+
+Прод-контейнер `llama-cpp` (юнит `llama-cpp.service`) сейчас
+`--privileged` + root: привилегии дают весь `/dev` (включая
+`nvidiactl`/`nvidia-uvm`/`nvidia-caps`), bypass seccomp/apparmor,
+неограниченный memlock и доступ к `/root`. Решение 03.09: снять
+`--privileged`, запускать контейнер от `-u ${LLAMA_UID}:0` (gid 0 =
+root-группа хоста — она же читает `/dev/nvidia*` `660 root:root` и
+keys `640 root:root`), ограничить память `-m` и memlock явным ulimit.
+Containerfile — без изменений (`/app` уже 755, F2).
+
+## Цель
+
+1. `resources/llama/llama-cpp.service`: non-root запуск без
+   `--privileged` (devices, `-u`, `-m`, `--ulimit memlock`, маунт
+   `/etc/llama:/llama:ro`, `--models-preset /llama/llama.ini`).
+2. `Makefile` (`systemd`): sysconfig-дефолты `LLAMA_UID`, `LLAMA_MEM`,
+   `LLAMA_SHM_SIZE=1g`; idempotent `chmod 640` keys.
+3. Рипл live ini: `api-key-file=/llama/...` (host-файл) + debug-
+   скрипты, живущие с live ini.
+4. Пины: `test-systemd-units.sh`, `test-makefile-graph.sh`,
+   `test-debug-scripts.sh`; `LIVE-SERVER.md` (топология + цифры).
+5. Live-окно: A/B `LLAMA_MEM` 128/140/160 (F8: steady-state 143.5 GB —
+   дозарачивать не нужно) + приёмка (id non-root, keyed-эндпоинты,
+   GPU/model-load, memlock, shm, память с запасом).
+
+## Не цели (отменено решением 03.09)
+
+- non-root build/deploy/debug (rootful toolbx остаётся);
+- привилегии через `sudo`; container-registry (ghcr/локальный);
+- containerfile (без изменений, F2);
+- `lact-autoswitch` (остаётся `--privileged`);
+- watcher, `llama-cpp-restart.sh` (без изменений — работают по
+  юниту/HTTP, не зависят от user контейнера);
+- `nvidia-uvm-tools` в `--device` (в open-fds инстанса не был, F4).
+
+## Верифицированные факты (основания дизайна, 03.09.2026)
+
+| # | Факт |
+|---|---|
+| F1 | Live-контейнер: `User=` (root), `Privileged=true`, `ShmSize=68719476736` (64g) — `podman-remote inspect llama-cpp` |
+| F2 | `/app` в образе `llama-cpp-cuda:13.3` = `755 root:root` → non-root исполнит `/app/llama-server`; containerfile без изменений |
+| F3 | Хост: `/dev/nvidia0-4`, `nvidiactl`, `nvidia-uvm`, `nvidia-uvm-tools` = `660 root:root`; `/dev/nvidia-caps/` = `755`, `nvidia-cap1..4` = `440 root:root` |
+| F4 | Open-fds инстанса (`/proc/34/fd`): `nvidia0-4` (rw), `nvidiactl` (rw), `nvidia-uvm` (rw), `nvidia-caps/nvidia-cap1`, `nvidia-caps/nvidia-cap2` (r); `nvidia-uvm-tools` не открыт |
+| F5 | Проба (одноразовый `--rm` контейнер, не трогая live): `-u 1001001:0` + только `--device nvidiactl/nvidia0/nvidia-uvm` + `label=disable`, без privileged → `nvidia-smi` работает (GPU0, 12288 MiB); `id` = `uid=1001001(1001001) gid=0(root)`; `HOME=/app` (нет passwd-записи → podman ставит HOME=WORKDIR) |
+| F6 | `/dev/shm`: 185M занято из 64G (NCCL/CUDA IPC) → `1g` достаточно |
+| F7 | Хост RAM: 252 GiB (`MemTotal 263982244 kB`) |
+| F8 | Live-контейнер `MEM USAGE = 143.5 GB` (`podman stats`, 03.09) → steady-state выше 128g/140g: `-m 128g/140g` упрётся в OOM без дозарачивания; маржа до 160g ≈ 16.5 GB |
+| F9 | Host `/etc/sysconfig/llama-cpp`: `LLAMA_IMAGE=llama-cpp-cuda:13.3`, `LLAMA_LOG_TIMESTAMPS=1`, `LLAMA_PORT=8080`, `LLAMA_SHM_SIZE=64g`; `LLAMA_UID`/`LLAMA_MEM` отсутствуют. `sysconfig-gen --default` существующее значение **не** перезаписывает → one-shot мигрейшн `64g→1g` нужен отдельно |
+| F10 | Live `/etc/llama/llama.ini` (host-файл, не в репо): `api-key-file = /root/llama/llama-cpp-keys.txt`, `ctx-size=430000`, `load-mode=mlock`, `cache-ram=131072` → после смены маунта на `/llama` строка `api-key-file` должна стать `/llama/llama-cpp-keys.txt` |
+| F11 | `/etc/llama/llama-cpp-keys.txt` = `600 root:root`; `/etc/llama` = `755` → `chmod 640` даёт чтение gid 0 (container-user `1001001:0`) |
+| F12 | NFS-модели: `/var/local/llm/gguf-models` = `755`, gguf-файлы `644` (NFS, group UNKNOWN) → non-root читает |
+| F13 | `debug/llama-run.sh` — mirror юнита (root, `--privileged`, маунт `/root/llama`, live ini); C2-launch в `debug/repro-llama-block3-run.sh` — live ini через маунт `/root/llama`; стубы (plain: явный `--api-key-file /root/llama/...`, router: свой `debug/llama-cpu-stub.ini`) live ini **не** используют |
+| F14 | Пины: `scripts/test-systemd-units.sh:173` (`-v /etc/llama:/root/llama:ro`), `scripts/test-makefile-graph.sh:926` (`LLAMA_SHM_SIZE=64g`), `scripts/test-debug-scripts.sh` (строки маунтов llama-run/repro) |
+| F15 | Graph-тест `make systemd` ходит во временный hostroot **без** `/etc/llama` → keys-chmod-шаг в Makefile должен не падать при отсутствии файла (guard) |
+
+## Дизайн
+
+### 1. `resources/llama/llama-cpp.service`
+
+`ExecStart` (единственная changed-секция; `[Unit]`/`Restart`/`Install`
+без изменений):
+
+```
+ExecStart=/usr/bin/podman run \
+    --name llama-cpp \
+    --device /dev/nvidia0 \
+    --device /dev/nvidia1 \
+    --device /dev/nvidia2 \
+    --device /dev/nvidia3 \
+    --device /dev/nvidia4 \
+    --device /dev/nvidiactl \
+    --device /dev/nvidia-uvm \
+    --security-opt label=disable --shm-size=${LLAMA_SHM_SIZE} \
+    -u ${LLAMA_UID}:0 \
+    -m ${LLAMA_MEM} \
+    --ulimit memlock=-1:-1 \
+    -v /var/local/llm/gguf-models:/models \
+    -v /etc/llama:/llama:ro \
+    -p ${LLAMA_PORT}:8080 \
+    -e LLAMA_LOG_TIMESTAMPS=${LLAMA_LOG_TIMESTAMPS} \
+    ${LLAMA_IMAGE} --port 8080 --host 0.0.0.0 \
+    --models-preset /llama/llama.ini --metrics
+```
+
+Изменения против текущего: **снят** `--privileged`; **добавлены**
+`--device /dev/nvidiactl`, `--device /dev/nvidia-uvm` (F3/F4: без
+privileged остаются только явные `--device`), `-u ${LLAMA_UID}:0`
+(gid 0 — F3/F11), `-m ${LLAMA_MEM}`, `--ulimit memlock=-1:-1`
+(`load-mode=mlock`, F10); маунт `/root/llama` → `/llama`,
+`--models-preset` → `/llama/llama.ini` (F10: non-root не видит `/root`).
+
+`nvidia-caps`/`uvm-tools` — не добавляем (R1: только fallback).
+
+### 2. `Makefile` (таргет `systemd`)
+
+- sysconfig-gen `llama-cpp`: `--default LLAMA_UID=1001001`,
+  `--default LLAMA_MEM=160g` (предварительно — финал по A/B §7, при
+  расхождении дефолт правится пост-оконным коммитом),
+  `--default LLAMA_SHM_SIZE=64g` → `1g` (F6).
+- Keys chmod (idempotent, guard по F15; путь из существующей
+  `$(LLAMA_KEYS_FILE)`):
+
+```
+if [ -f $(HOST_ROOT)$(LLAMA_KEYS_FILE) ] ; then \
+    chmod 640 $(HOST_ROOT)$(LLAMA_KEYS_FILE) ; \
+fi
+```
+
+- One-shot `LLAMA_SHM_SIZE=64g→1g` в существующий host sysconfig (F9)
+  — **не** в Makefile (рецепт чистый; `--default` не должен нести
+  мигрейшн): шаг live-окна §7.3.
+
+### 3. Host-изменения (live-окно, файлы вне репо)
+
+- `/etc/llama/llama.ini`: `api-key-file = /llama/llama-cpp-keys.txt`
+  (F10).
+- `/etc/sysconfig/llama-cpp`: one-shot
+  `sed -i 's/^LLAMA_SHM_SIZE=64g$/LLAMA_SHM_SIZE=1g/'` (F9);
+  `LLAMA_UID`/`LLAMA_MEM` — добавляет `make systemd` (новые ключи).
+- `/etc/llama/llama-cpp-keys.txt`: `chmod 640` (шаг `make systemd`).
+
+### 4. Debug-скрипты (рипл live ini, F13)
+
+- `debug/llama-run.sh` — **полный mirror нового юнита**: те же
+  devices (0-4 + nvidiactl + nvidia-uvm), `--security-opt
+  label=disable --shm-size=1g`, `-u 1001001:0 -m 160g`, `--ulimit
+  memlock=-1:-1`, маунт `/etc/llama:/llama:ro`,
+  `--models-preset /llama/llama.ini` (значения зашиты — стиль файла;
+  CRE-detection и `rm -f`/`--name` как есть). Header-заявка «manual
+  fallback for the unit» сохраняется истинной.
+- `debug/repro-llama-block3-run.sh` — только C2-launch (live ini):
+  маунт `/etc/llama:/llama:ro` + `--models-preset /llama/llama.ini`
+  (остаётся `--privileged` — debug-контейнер). Стубы (plain/router) —
+  без изменений (свой ini / явные args, root).
+- `debug/llama.ini` — копия live ini: `api-key-file` →
+  `/llama/llama-cpp-keys.txt` (последовательность с §3).
+
+### 5. Тесты
+
+- `scripts/test-systemd-units.sh` (секция llama):
+  - маунт: `-v /etc/llama:/root/llama:ro` → `-v /etc/llama:/llama:ro`;
+  - новые пины: `-u ${LLAMA_UID}:0`, `-m ${LLAMA_MEM}`,
+    `--ulimit memlock=-1:-1`, `--device /dev/nvidiactl`,
+    `--device /dev/nvidia-uvm`, `--models-preset /llama/llama.ini`;
+  - негативный: llama-юнит без `--privileged` (autoswitch остаётся
+    privileged — пин только по `llama-cpp.service`; существующий
+    autoswitch-пин `--privileged` не трогать).
+- `scripts/test-makefile-graph.sh`:
+  - `LLAMA_SHM_SIZE=64g` → `1g` (F14);
+  - новые syscfg-пины: `LLAMA_UID=1001001`, `LLAMA_MEM=160g`;
+  - keys chmod: до `make systemd` создать в hostroot тесте
+    `etc/llama/llama-cpp-keys.txt` mode `600` → после таргета
+    assert mode `640` (позитивный кейс guard'а §2).
+- `scripts/test-debug-scripts.sh`: строки маунтов → `/llama:ro`
+  (llama-run count 1, repro count 3); новые пины mirror-флагов
+  llama-run.sh (`-u 1001001:0`, `-m 160g`, `--ulimit memlock=-1:-1`,
+  `nvidiactl`/`nvidia-uvm`, `--models-preset /llama/llama.ini`).
+- Остальные тесты (`test-llama-cpp-restart.sh`,
+  `test-llama-cpp-watcher.sh`, `test-no-sensitive.sh`, ...) — без
+  изменений, должны остаться зелёными.
+
+### 6. `LIVE-SERVER.md`, `TODO.md`
+
+- `LIVE-SERVER.md`:
+  - «Топология»: non-root `-u 1001001:0` (gid 0 читает keys `640` и
+    `/dev/nvidia*` `660`), без `--privileged` (devices 0-4 + nvidiactl
+    + uvm), `-m ${LLAMA_MEM}`, `--ulimit memlock=-1:-1`, маунт
+    `/llama` + preset, shm `1g` (F6: 185M NCCL/CUDA IPC);
+  - «Ключи»: mode `640 root:root` (gid 0 читает);
+  - «Числа»: результаты A/B §7 (OOM-точки 128/140, замеры 160 с
+    разбором `memory.stat` anon/file).
+- `TODO.md`: чекбоксы Этапа 26, ссылка на отчёт, при расхождении A/B —
+  финальное `LLAMA_MEM`.
+
+### 7. Live-окно (после SDD-реализации)
+
+1. Pre: снимки (`inspect`, sysconfig, ini, keys mode, `git status`
+   ветки), `make llama-cpp-restart MODE=check` (SAME_HOST=yes).
+2. Deploy: `make systemd` → проверка: unit на хосте (diff против
+   resources/), sysconfig (`LLAMA_UID`, `LLAMA_MEM`, `SHM` — см. 3),
+   keys mode `640`.
+3. Host-правки: one-shot sed `64g→1g` (F9), ini `api-key-file`
+   (F10). Проверка: `grep LLAMA_SHM_SIZE` = `1g`, `grep api-key-file`.
+4. A/B `LLAMA_MEM` (редактирование host sysconfig + `MODE=restart`):
+   - **128g**: ожидаем OOM-килл (crash loop; steady-state 143.5 GB,
+     F8) → по `journalctl -lu llama-cpp --since` фиксируем oom-строки и
+     точку падения → `MODE=stop` (разорвать цикл, R3).
+   - **140g**: то же (143.5 > 140: OOM по мере re-fill пула нашей
+     сессией) → `MODE=stop`.
+   - **160g**: `MODE=restart` → ready → приёмка:
+     - `podman-remote exec llama-cpp id` = `uid=1001001 gid=0`;
+     - keyed-эндпоинты: `/slots` (Bearer) + verify POST 200;
+     - GPU/model-load: `/v1/models` `loaded`, tensor-split 5×,
+       args-сверка (тождество контейнера);
+     - memlock: `Max locked memory` = `unlimited` в
+       `/proc/<instance-pid>/limits`;
+     - shm: `df /dev/shm` = `1.0G`;
+     - память: `podman stats` + cgroup `memory.current`/`memory.stat`
+       (anon vs file) под нагрузкой (наша сессия + до-префилл) —
+       ответ на вопрос точности показаний (F8);
+     - сессия переживает рестарт (написание отчёта = приёмка).
+5. Финал: при расхождении A/B с 160g — правка Makefile-дефолта;
+   отчёт `docs/superpowers/reports/2026-09-0X-stage26-llama-cpp-
+   nonroot.md`; `LIVE-SERVER.md` «Числа» + «Топология»; `TODO.md`.
+6. Статика: полный тест-сьют зелёный.
+
+## Риски и митигации
+
+| # | Риск | Митигация |
+|---|---|---|
+| R1 | `nvidia-caps/nvidia-cap1,2` = `440 root:root` (F3): открыты в текущем инстансе (F4), non-root их не откроет; нужны ли они для полного CUDA-контекста — неизвестно (проба F5 — уровень `nvidia-smi`) | Live-окно решающий: приёмка GPU/model-load на 160g. Fallback: one-shot/udev `chmod 640 root:root` host-nodes cap1/2 + `--device /dev/nvidia-caps/nvidia-cap1|2` в юнит (+пины) — пост-оконным коммитом |
+| R2 | `--privileged` bypass'ил seccomp/apparmor; non-privileged контейнер под default-профилями — CUDA/NCCL может упереться в syscall | Стандартный non-privileged NVIDIA-сетап работает под default seccomp (конвенция nvidia-container); live-окно решающий. Fallback: `--security-opt seccomp=unconfined` (и/или `apparmor=unconfined`) — изоляция слабее, фикс в отчёте |
+| R3 | OOM crash loop на 128/140 (юнит `Restart=always`, `RestartSec=30`) | По наблюдению oom-строк — `MODE=stop`; даунтайм ограничен; watcher не реагирует (нет zombie-сигнатур) |
+| R4 | `HOME=/app` не writable для non-root (F5) → nvJitLink cache-варнинг | Не фатально: cubin'ы для arch 86 в бандле (F2/образ); наблюдение по логу в окне. Если станет проблемой — `-e HOME=/tmp` в юнит |
+| R5 | Сессия координатора умирает на каждом рестарте (A/B = 3+ рестарта) | По дизайну (Этап 25): `setsid -f` + status-файл; координатор опрашивает status |
+| R6 | Пропущен one-shot `64g→1g` (F9) → юнит молча держит 64g (не падает, только перерасход) | Шаг §7.3 с явной проверкой `grep LLAMA_SHM_SIZE` |
+| R7 | `LLAMA_MEM`-дефолт Makefile (160g) может расстроиться с итогом A/B | Пост-оконный коммит правит дефолт + пины (graph-тест, `debug/llama-run.sh` + `test-debug-scripts.sh`) + `LIVE-SERVER.md` (шаг §7.5) |
+
+## Критерии готовности
+
+- Файлы: `resources/llama/llama-cpp.service`, `Makefile` (3
+  sysconfig-дефолта + keys-chmod guard), `debug/llama-run.sh`,
+  `debug/repro-llama-block3-run.sh` (C2), `debug/llama.ini`,
+  `scripts/test-systemd-units.sh`, `scripts/test-makefile-graph.sh`,
+  `scripts/test-debug-scripts.sh`, `LIVE-SERVER.md`, `TODO.md`, отчёт;
+  containerfile — без изменений (F2);
+- тест-сьют зелёный (все существующие + обновлённые пины);
+- live-окно: A/B 128/140/160 по протоколу §7, приёмка: `id` non-root,
+  keyed-эндпоинты, GPU/model-load, memlock unlimited, shm 1g, память
+  ниже финального лимита с запасом, сессия пережила рестарт;
+- `TODO.md` Этап 26: чекбоксы отмечены, финальное `LLAMA_MEM`;
+- finishing: merge ветки в `main`.
