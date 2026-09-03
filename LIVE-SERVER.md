@@ -7,7 +7,14 @@
 ## Топология и факты
 
 - Роутер: контейнер `llama-cpp` (юнит `llama-cpp.service`), порт 8080
-  (`-p ${LLAMA_PORT}:8080`), `--models-preset /root/llama/llama.ini`.
+  (`-p ${LLAMA_PORT}:8080`), non-root `-u ${LLAMA_UID}:0` (gid 0
+  читает keys `640 root:root` и `/dev/nvidia*` `660 root:root`),
+  без `--privileged` (devices: `nvidia0-4` + `nvidiactl` +
+  `nvidia-uvm`), `-m ${LLAMA_MEM}` (стартовое 120g; при OOM оператор
+  поднимает в sysconfig — потребление растёт с накопленным
+  трафиком), `--ulimit memlock=-1:-1` (mlock-модель),
+  `--shm-size ${LLAMA_SHM_SIZE}` (1g; NCCL/CUDA IPC ~185M),
+  `--models-preset /llama/llama.ini` (маунт `/etc/llama:/llama:ro`).
   Инстанс — единственный потомок pid 1; его порт наружу не
   опубликован: все сигналы — через роутер.
 - Сервер одно-модельный (VRAM не позволяет больше): все проверки
@@ -26,10 +33,12 @@
   - `/slots?model=<M>` — **ключ** (`Authorization: Bearer`):
     `is_processing` на слот — сигнал «инференс в полёте»;
   - `POST /v1/chat/completions` — ключ; verify после рестарта.
-- Ключи: хостовый `/etc/llama/llama-cpp-keys.txt` (файл с `#`-
-  комментариями и пустыми строками; рабочая строка — первая из
-  не-комментариев). Читаются в рантайме; **не писать в логи/argv**
-  (no-sensitive), без `curl -v` на keyed-эндпоинтах.
+- Ключи: хостовый `/etc/llama/llama-cpp-keys.txt` (mode `640 root:root`
+  — gid 0 читает, контейнер non-root; `make systemd` ставит 640
+  idempotent-шагом; файл с `#`-комментариями и пустыми строками;
+  рабочая строка — первая из не-комментариев). Читаются в рантайме;
+  **не писать в логи/argv** (no-sensitive), без `curl -v` на
+  keyed-эндпоинтах.
 
 ## SAME_HOST — сессия на этом сервере?
 
