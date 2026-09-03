@@ -642,11 +642,11 @@ git commit -m "lact-autoswitch: pin state in the main loop (crash/thermal trigge
 `expect_grep "autoswitch: --name" ...`):
 
 ```sh
-expect_grep "autoswitch: -e CRASH_PIN_COUNT" "$u_autoswitch" '^[[:space:]]*-e CRASH_PIN_COUNT=${CRASH_PIN_COUNT}[[:space:]]*\\$'
-expect_grep "autoswitch: -e CRASH_PIN_WINDOW" "$u_autoswitch" '^[[:space:]]*-e CRASH_PIN_WINDOW=${CRASH_PIN_WINDOW}[[:space:]]*\\$'
-expect_grep "autoswitch: -e THERMAL_PIN_COUNT" "$u_autoswitch" '^[[:space:]]*-e THERMAL_PIN_COUNT=${THERMAL_PIN_COUNT}[[:space:]]*\\$'
-expect_grep "autoswitch: -e THERMAL_PIN_WINDOW" "$u_autoswitch" '^[[:space:]]*-e THERMAL_PIN_WINDOW=${THERMAL_PIN_WINDOW}[[:space:]]*\\$'
-expect_grep "autoswitch: -e PIN_LOG_EVERY" "$u_autoswitch" '^[[:space:]]*-e PIN_LOG_EVERY=${PIN_LOG_EVERY}[[:space:]]*\\$'
+expect_grep "autoswitch: -e CRASH_PIN_COUNT" "$u_autoswitch" '^[[:space:]]*-e CRASH_PIN_COUNT=\$\{CRASH_PIN_COUNT\}[[:space:]]*\\$'
+expect_grep "autoswitch: -e CRASH_PIN_WINDOW" "$u_autoswitch" '^[[:space:]]*-e CRASH_PIN_WINDOW=\$\{CRASH_PIN_WINDOW\}[[:space:]]*\\$'
+expect_grep "autoswitch: -e THERMAL_PIN_COUNT" "$u_autoswitch" '^[[:space:]]*-e THERMAL_PIN_COUNT=\$\{THERMAL_PIN_COUNT\}[[:space:]]*\\$'
+expect_grep "autoswitch: -e THERMAL_PIN_WINDOW" "$u_autoswitch" '^[[:space:]]*-e THERMAL_PIN_WINDOW=\$\{THERMAL_PIN_WINDOW\}[[:space:]]*\\$'
+expect_grep "autoswitch: -e PIN_LOG_EVERY" "$u_autoswitch" '^[[:space:]]*-e PIN_LOG_EVERY=\$\{PIN_LOG_EVERY\}[[:space:]]*\\$'
 ```
 
 `scripts/test-makefile-graph.sh`:
@@ -662,7 +662,7 @@ for t in all nvidia-base kernel-devel kernel-redist kmod-oss kmod nvidia-redist-
 
 ```sh
 # --- 1a. all: default goal + exact line ---
-first_target=$(grep -m1 -E '^[A-Za-z0-9_-]+: ' "$repo_root/Makefile")
+first_target=$(grep -m1 -oE '^[A-Za-z0-9_-]+:' "$repo_root/Makefile")
 if [ "$first_target" = "all:" ]; then
     ok "all: is the default goal (first target)"
 else
