@@ -224,5 +224,10 @@ seq 1 105 | while read -r n; do echo "$((1786000000 + n))"; done > "$CRASH_EVENT
 run_watcher "$tmp/lines-pattern.txt" active
 check_events "crash events: trim 106 -> 100" 100
 
+# 4.11 mkdir -p несуществующего каталога (спека §6)
+CRASH_EVENTS_FILE=$tmp/nested/dir/crashes
+run_watcher "$tmp/lines-pattern.txt" active
+check_events "crash events: mkdir -p nested dir" 1
+
 echo "# pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
