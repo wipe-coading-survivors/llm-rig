@@ -40,14 +40,19 @@ cp local.mk.example local.mk
   `OPENCODE_CONFIG` (конфиг opencode для рестарт-скрипта).
 - Без `local.mk` сборка образов работает, `make systemd` — fail-loud.
 
-**Цепь образов** — одна команда, порядок — по зависимостям Makefile
-(base → kernel/kmod/driver → cuda → nccl → runtime):
+**Образы** — три ветки, порядок — по зависимостям Makefile:
+`llama-cpp-cuda` (runtime-цепь: base → driver → cuda → nccl → runtime),
+`kmod` (модули ядра), `nvidia-lact-autoswitch` (LACT).
+`all` (целевой по умолчанию) — все ветки + деплой:
 
 ```sh
-make llama-cpp-cuda
+make all
 ```
 
-**Деплой на хост** (`$(HOST_ROOT)`):
+Частичная сборка: `make llama-cpp-cuda`, `make kmod`,
+`make nvidia-lact-autoswitch`.
+
+**Деплой на хост** (`$(HOST_ROOT)`; входит в `all`):
 
 ```sh
 make systemd

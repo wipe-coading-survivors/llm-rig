@@ -69,6 +69,9 @@ NVIDIA_KMOD_IMAGE   = nvidia-kmod-$(NVIDIA_DRV_VER):$(KVER)
 
 KOJI_BASE_URL ?= https://kojipkgs.fedoraproject.org
 
+# default: all image branches (kmod + runtime chain + lact) + host deploy
+all: kmod llama-cpp-cuda nvidia-lact-autoswitch systemd
+
 clean:
 	$(CRE) images | awk '/^<none>/ { print $$3; }' | xargs $(CRE) rmi || true
 	rm -rf empty
