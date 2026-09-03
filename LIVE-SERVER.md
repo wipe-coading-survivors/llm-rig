@@ -130,8 +130,8 @@ non-root-контейнер, лимит `LLAMA_MEM=120g`, та же модель
 - Память: `podman stats` ≈ anon+shmem (file-кэш не входит); cgroup
   `memory.current` = anon+file+shmem. `file` = 29.9 GiB константа
   (page cache модели, NFS). `anon` — скачками с сессионным трафиком
-  (cache-ram/KV), потом плато: stats 7.9 → 13.3 → 26.9 GB за первые
-  30 мин, далее плато (~+0.3 GiB/40 мин). Пик окна: cg 51.0 GiB =
+  (cache-ram/KV), потом плато: stats 7.9 → 13.3 → 26.9 GB (16:52→17:25),
+  далее плато (~+0.3 GiB/40 мин). Пик окна: cg 51.0 GiB =
   42% лимита 120 GiB. OOM-точек нет; `LLAMA_MEM` — зона оператора.
 
 ## Логи

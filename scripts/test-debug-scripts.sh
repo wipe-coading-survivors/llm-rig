@@ -55,6 +55,7 @@ check_count "llama-send.py: host key path" "$send" '"/etc/llama/llama-cpp-keys.t
 # --- repro-llama-block3-run.sh: stage-14 paths + stage-15 unit-aware prod control ---
 check_count "repro: /etc/llama mount /llama (C2)" "$repro" '-v /etc/llama:/llama:ro' 1
 check_count "repro: /etc/llama mounts /root/llama (stubs x2)" "$repro" '-v /etc/llama:/root/llama:ro' 2
+check_count "repro: C2 models-preset /llama" "$repro" '--models-preset /llama/llama.ini' 1
 check_count "repro: no llama-cpp-numa" "$repro" 'llama-cpp-numa' 0
 check_count "repro: PROD=llama-cpp" "$repro" 'PROD=llama-cpp' 1
 check_count "repro: no CUDA_VISIBLE_DEVICES" "$repro" 'CUDA_VISIBLE_DEVICES' 0
