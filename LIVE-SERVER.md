@@ -103,7 +103,7 @@
 
 Замеры 02.09 (live-окно Этапа 25, отчёт
 `docs/superpowers/reports/2026-09-02-stage25-safe-restart.md`; модель
-30 GB q8, mlock, 5×GPU tensor split; модель — NFS4.2 `172.17.7.247:
+30 GB q8, mlock, 5×GPU tensor split; модель — NFS4.2 `<NFS>:
 /mnt/sas/llm` (TrueNAS), клиент pigoky 10GbE, `/models` = bind
 `/var/local/llm/gguf-models`):
 
@@ -120,6 +120,19 @@
 - Ре-префилл первого запроса сессии после рестарта (cache-ram пуст):
   **117645 prompt-токенов → 181.2 s (649.23 t/s, 1.54 ms/токен)**;
   полный ход сессии (＋6159 токенов генерации @ 45.29 t/s) — 317 s.
+
+Замеры 03.09 (live-окно Этапа 26, отчёт
+`docs/superpowers/reports/2026-09-03-stage26-llama-cpp-nonroot.md`;
+non-root-контейнер, лимит `LLAMA_MEM=120g`, та же модель):
+
+- t0→t1 даунтайм: **106 s** (слоты idle, без stop-hang); t1→t2
+  загрузка модели (cold NFS): **89 s**; verify keyed POST — 2 s.
+- Память: `podman stats` ≈ anon+shmem (file-кэш не входит); cgroup
+  `memory.current` = anon+file+shmem. `file` = 29.9 GiB константа
+  (page cache модели, NFS). `anon` — скачками с сессионным трафиком
+  (cache-ram/KV), потом плато: stats 7.9 → 13.3 → 26.9 GB за первые
+  30 мин, далее плато (~+0.3 GiB/40 мин). Пик окна: cg 51.0 GiB =
+  42% лимита 120 GiB. OOM-точек нет; `LLAMA_MEM` — зона оператора.
 
 ## Логи
 

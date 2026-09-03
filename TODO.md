@@ -73,20 +73,23 @@ LLM (NVIDIA): модули ядра, драйвер, OC/авто-свитч, р�
 из «Non-root окружения» оставляем только запуск контейнера `llama-cpp`
 non-root (`-u ${LLAMA_UID}:0`, без `--privileged`).
 
-- [ ] `llama-cpp.service`: снять `--privileged`; добавить
+Спека: `docs/superpowers/specs/2026-09-03-llama-cpp-nonroot-design.md`
+- [x] `llama-cpp.service`: снять `--privileged`; добавить
       `-u ${LLAMA_UID}:0`, `-m ${LLAMA_MEM}`, `--ulimit memlock=-1:-1`
-      (модель mlock); маунт `/etc/llama:/llama:ro` + `--models-preset
-      /llama/llama.ini` (non-root не видит `/root`)
-- [ ] keys `/etc/llama/llama-cpp-keys.txt`: `chmod 640` (root:root,
+      (модель mlock), `--device nvidiactl/nvidia-uvm`; маунт
+      `/etc/llama:/llama:ro` + `--models-preset /llama/llama.ini`
+- [x] keys `/etc/llama/llama-cpp-keys.txt`: `chmod 640` (root:root,
       group 0 читает) — idempotent-шаг в `make systemd`
-- [ ] sysconfig `llama-cpp`: `LLAMA_UID=1001001`, `LLAMA_MEM=150g`,
-      `LLAMA_SHM_SIZE=1g` (было 64g; провенанс «выгрузить KV в
-      /dev/shm» — гугль; факт 185M = NCCL/CUDA IPC, KV в host RAM)
-- [ ] `test-systemd-units.sh` (pin новых флагов), `LIVE-SERVER.md`
+- [x] sysconfig `llama-cpp`: `LLAMA_UID=1001001`, `LLAMA_MEM=120g`
+      (стартовое; при OOM оператор поднимает — рост с трафиком,
+      отчёт §Память), `LLAMA_SHM_SIZE=1g` (было 64g; факт 185M =
+      NCCL/CUDA IPC)
+- [x] `test-systemd-units.sh` (pin новых флагов), `LIVE-SERVER.md`
       (non-root + цифры памяти); containerfile — без изменений
       (`/app` уже 755)
-- [ ] live-окно: safe-restart → `podman exec llama-cpp id` = non-root,
-      keyed-эндпоинты, GPU/model-load, memlock, память < 150g
+- [x] live-окно: safe-restart → `podman exec llama-cpp id` = non-root,
+      keyed-эндпоинты, GPU/model-load, memlock, замеры памяти (отчёт
+      `docs/superpowers/reports/2026-09-03-stage26-llama-cpp-nonroot.md`)
 
 Отменено (откат на root): non-root-dev, привилегии через `sudo`,
 container-registry (ghcr/локальный).
