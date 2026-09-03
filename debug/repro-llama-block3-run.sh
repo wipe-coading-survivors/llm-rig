@@ -421,10 +421,10 @@ if [ "$c2_ok" = "1" ]; then
     if ! $CRE run -d --name "$CC" \
         --device /dev/nvidia0 --device /dev/nvidia1 --device /dev/nvidia2 --device /dev/nvidia3 --device /dev/nvidia4 \
         --security-opt label=disable --privileged --shm-size=64g \
-        -v /var/local/llm/gguf-models:/models -v /etc/llama:/root/llama:ro \
+        -v /var/local/llm/gguf-models:/models -v /etc/llama:/llama:ro \
         -p 8080:8080 -e LLAMA_LOG_TIMESTAMPS=1 \
         "$PROD_IMG" --port 8080 --host 0.0.0.0 \
-        --models-preset /root/llama/llama.ini >> "$OUT" 2>&1; then
+        --models-preset /llama/llama.ini >> "$OUT" 2>&1; then
       log "FATAL: $CC не поднялся"
       jlog "C2 infra-fail: container launch failed"
       rcc=13

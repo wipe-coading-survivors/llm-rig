@@ -33,7 +33,7 @@
 Принято: `SAME_HOST=yes`, слоты idle, модель loaded, `rc=0`.
 
 ```
-2026-09-02T17:16:43 start pid=1440493 mode=check url=http://10.88.0.1:8080 model=default
+2026-09-02T17:16:43 start pid=1440493 mode=check url=http://<LLAMA_HOST>:8080 model=default
 2026-09-02T17:16:43 preflight ok unit=active
 2026-09-02T17:16:43 same-host yes
 2026-09-02T17:16:43 check slots busy=0
@@ -44,7 +44,7 @@
 Замечания:
 - Рецепт расширился с кавычками: `SYSTEMDCTL="chroot /run/host
   /usr/bin/systemctl"` — как один аргумент env (C1-фикс работает в проде).
-- `LLAMA_URL=http://10.88.0.1:8080` — `LLAMA_HOST` из operator-`local.mk`
+- `LLAMA_URL=http://<LLAMA_HOST>:8080` — `LLAMA_HOST` из operator-`local.mk`
   (host-IP из toolbx-нетнс); SAME_HOST-вердикт при этом `yes` (baseURL
   сессии 127.0.0.1:8080 совпадает по порту — оба адреса доходят до сервера).
 - `slots busy=0` — во время tool-вызова генерация сессии паузится, слот
@@ -60,7 +60,7 @@ prompt 75 токенов) + `make llama-cpp-restart MODE=restart IDLE_TIMEOUT=5`
 Принято: rc=3, сервер **не** рестартован, генерация завершилась.
 
 ```
-2026-09-02T17:19:02 start pid=1441652 mode=restart url=http://10.88.0.1:8080 model=default
+2026-09-02T17:19:02 start pid=1441652 mode=restart url=http://<LLAMA_HOST>:8080 model=default
 2026-09-02T17:19:02 preflight ok unit=active
 2026-09-02T17:19:02 same-host yes
 2026-09-02T17:19:02 wait-idle timeout=5s model=default
@@ -81,7 +81,7 @@ prompt 75 токенов) + `make llama-cpp-restart MODE=restart IDLE_TIMEOUT=5`
 дождался завершения генерации (17:24:01), затем — рестарт.
 
 ```
-2026-09-02T17:22:44 start pid=1443466 mode=restart url=http://10.88.0.1:8080 model=default
+2026-09-02T17:22:44 start pid=1443466 mode=restart url=http://<LLAMA_HOST>:8080 model=default
 2026-09-02T17:22:44 preflight ok unit=active
 2026-09-02T17:22:44 same-host yes
 2026-09-02T17:22:44 wait-idle timeout=120s model=default
@@ -115,7 +115,7 @@ prompt 75 токенов) + `make llama-cpp-restart MODE=restart IDLE_TIMEOUT=5`
   10GbE-линии (~1.1 GB/s) → клиентский page cache (pigoky) был тёплый.
   Верификация post-hoc: dd 1 GB через cache — **6.2 GB/s**, dd 256 MB
   `iflag=direct` (чистая NFS4.2) — **436 MB/s**. Цепочка: `/models` =
-  bind `/var/local/llm/gguf-models` = NFS4.2 `172.17.7.247:/mnt/sas/
+  bind `/var/local/llm/gguf-models` = NFS4.2 `<NFS>:/mnt/sas/
   llm` (TrueNAS; клиент pigoky 10GbE, TCP, rsize 1 MB). Холодная
   загрузка ≈ 30 GB @ ~450 MB/s ≈ 65–70 s + mlock/GPU → t1→t2 cold ≈
   70–80 s.

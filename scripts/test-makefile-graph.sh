@@ -827,6 +827,10 @@ else
 fi
 printf 'LLAMA_HOST = 127.0.0.1\nLLM_NFS_SERVER = 127.0.0.1\n' > "$repo_root/local.mk"
 
+mkdir -p "$tmp/hostroot/etc/llama"
+printf 'test-key\n' > "$tmp/hostroot/etc/llama/llama-cpp-keys.txt"
+chmod 600 "$tmp/hostroot/etc/llama/llama-cpp-keys.txt"
+
 make_target systemd HOST_ROOT="$tmp/hostroot" SYSTEMDCTL="$tmp/fake-systemctl"
 expect_make_rc "systemd rc=0" 0
 
@@ -923,7 +927,15 @@ syscfg "sysconfig lact-autoswitch HISTORY_LINES" "$sys/lact-autoswitch" "HISTORY
 syscfg "sysconfig llama-cpp LLAMA_IMAGE" "$sys/llama-cpp" "LLAMA_IMAGE=llama-cpp-cuda:test"
 syscfg "sysconfig llama-cpp LLAMA_LOG_TIMESTAMPS" "$sys/llama-cpp" "LLAMA_LOG_TIMESTAMPS=1"
 syscfg "sysconfig llama-cpp LLAMA_PORT" "$sys/llama-cpp" "LLAMA_PORT=8080"
-syscfg "sysconfig llama-cpp LLAMA_SHM_SIZE" "$sys/llama-cpp" "LLAMA_SHM_SIZE=64g"
+syscfg "sysconfig llama-cpp LLAMA_SHM_SIZE" "$sys/llama-cpp" "LLAMA_SHM_SIZE=1g"
+syscfg "sysconfig llama-cpp LLAMA_UID" "$sys/llama-cpp" "LLAMA_UID=1001001"
+syscfg "sysconfig llama-cpp LLAMA_MEM" "$sys/llama-cpp" "LLAMA_MEM=120g"
+keys="$tmp/hostroot/etc/llama/llama-cpp-keys.txt"
+if [ "$(stat -c %a "$keys" 2>/dev/null || echo absent)" = "640" ]; then
+    ok "systemd: keys chmod 600 -> 640"
+else
+    ko "systemd: keys chmod 600 -> 640" "640" "$(stat -c %a "$keys" 2>/dev/null || echo absent)"
+fi
 
 expect_log_contains "systemd: daemon-reload" "fake-systemctl daemon-reload"
 expect_log_contains "systemd: enable prod stack" "fake-systemctl enable nvidia-kmod.service nvidia-card-setting.service llama-cpp.service var-local-llm.mount lact-autoswitch.service"

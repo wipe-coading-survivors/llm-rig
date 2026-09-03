@@ -16,13 +16,18 @@ ExecStart=/usr/bin/podman run \
     --device /dev/nvidia2 \
     --device /dev/nvidia3 \
     --device /dev/nvidia4 \
-    --security-opt label=disable --privileged --shm-size=${LLAMA_SHM_SIZE} \
+    --device /dev/nvidiactl \
+    --device /dev/nvidia-uvm \
+    --security-opt label=disable --shm-size=${LLAMA_SHM_SIZE} \
+    -u ${LLAMA_UID}:0 \
+    -m ${LLAMA_MEM} \
+    --ulimit memlock=-1:-1 \
     -v /var/local/llm/gguf-models:/models \
-    -v /etc/llama:/root/llama:ro \
+    -v /etc/llama:/llama:ro \
     -p ${LLAMA_PORT}:8080 \
     -e LLAMA_LOG_TIMESTAMPS=${LLAMA_LOG_TIMESTAMPS} \
     ${LLAMA_IMAGE} --port 8080 --host 0.0.0.0 \
-    --models-preset /root/llama/llama.ini --metrics
+    --models-preset /llama/llama.ini --metrics
 Restart=always
 RestartSec=30
 Type=simple

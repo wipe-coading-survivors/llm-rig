@@ -7,7 +7,14 @@
 ## Топология и факты
 
 - Роутер: контейнер `llama-cpp` (юнит `llama-cpp.service`), порт 8080
-  (`-p ${LLAMA_PORT}:8080`), `--models-preset /root/llama/llama.ini`.
+  (`-p ${LLAMA_PORT}:8080`), non-root `-u ${LLAMA_UID}:0` (gid 0
+  читает keys `640 root:root` и `/dev/nvidia*` `660 root:root`),
+  без `--privileged` (devices: `nvidia0-4` + `nvidiactl` +
+  `nvidia-uvm`), `-m ${LLAMA_MEM}` (стартовое 120g; при OOM оператор
+  поднимает в sysconfig — потребление растёт с накопленным
+  трафиком), `--ulimit memlock=-1:-1` (mlock-модель),
+  `--shm-size ${LLAMA_SHM_SIZE}` (1g; NCCL/CUDA IPC ~185M),
+  `--models-preset /llama/llama.ini` (маунт `/etc/llama:/llama:ro`).
   Инстанс — единственный потомок pid 1; его порт наружу не
   опубликован: все сигналы — через роутер.
 - Сервер одно-модельный (VRAM не позволяет больше): все проверки
@@ -26,10 +33,12 @@
   - `/slots?model=<M>` — **ключ** (`Authorization: Bearer`):
     `is_processing` на слот — сигнал «инференс в полёте»;
   - `POST /v1/chat/completions` — ключ; verify после рестарта.
-- Ключи: хостовый `/etc/llama/llama-cpp-keys.txt` (файл с `#`-
-  комментариями и пустыми строками; рабочая строка — первая из
-  не-комментариев). Читаются в рантайме; **не писать в логи/argv**
-  (no-sensitive), без `curl -v` на keyed-эндпоинтах.
+- Ключи: хостовый `/etc/llama/llama-cpp-keys.txt` (mode `640 root:root`
+  — gid 0 читает, контейнер non-root; `make systemd` ставит 640
+  idempotent-шагом; файл с `#`-комментариями и пустыми строками;
+  рабочая строка — первая из не-комментариев). Читаются в рантайме;
+  **не писать в логи/argv** (no-sensitive), без `curl -v` на
+  keyed-эндпоинтах.
 
 ## SAME_HOST — сессия на этом сервере?
 
@@ -94,7 +103,7 @@
 
 Замеры 02.09 (live-окно Этапа 25, отчёт
 `docs/superpowers/reports/2026-09-02-stage25-safe-restart.md`; модель
-30 GB q8, mlock, 5×GPU tensor split; модель — NFS4.2 `172.17.7.247:
+30 GB q8, mlock, 5×GPU tensor split; модель — NFS4.2 `<NFS>:
 /mnt/sas/llm` (TrueNAS), клиент pigoky 10GbE, `/models` = bind
 `/var/local/llm/gguf-models`):
 
@@ -111,6 +120,19 @@
 - Ре-префилл первого запроса сессии после рестарта (cache-ram пуст):
   **117645 prompt-токенов → 181.2 s (649.23 t/s, 1.54 ms/токен)**;
   полный ход сессии (＋6159 токенов генерации @ 45.29 t/s) — 317 s.
+
+Замеры 03.09 (live-окно Этапа 26, отчёт
+`docs/superpowers/reports/2026-09-03-stage26-llama-cpp-nonroot.md`;
+non-root-контейнер, лимит `LLAMA_MEM=120g`, та же модель):
+
+- t0→t1 даунтайм: **106 s** (слоты idle, без stop-hang); t1→t2
+  загрузка модели (cold NFS): **89 s**; verify keyed POST — 2 s.
+- Память: `podman stats` ≈ anon+shmem (file-кэш не входит); cgroup
+  `memory.current` = anon+file+shmem. `file` = 29.9 GiB константа
+  (page cache модели, NFS). `anon` — скачками с сессионным трафиком
+  (cache-ram/KV), потом плато: stats 7.9 → 13.3 → 26.9 GB (16:52→17:25),
+  далее плато (~+0.3 GiB/40 мин). Пик окна: cg 51.0 GiB =
+  42% лимита 120 GiB. OOM-точек нет; `LLAMA_MEM` — зона оператора.
 
 ## Логи
 

@@ -103,8 +103,26 @@
   (2×215k) — рабочий потолок (58.3/60GB); `470000` — OOM в обоих режимах
   (unified и non-unified, 2026-09-02). `cache-ram 131072` (128GB) —
   верифицирован: restore без ре-префилла, 0 эвикшенов при 3 крупных
-  сессиях. Отчёт:
-  `docs/superpowers/reports/2026-09-02-cache-ram-verification.md`.
+   сессиях. Отчёт:
+   `docs/superpowers/reports/2026-09-02-cache-ram-verification.md`.
+
+## Vision: распознавание картинок
+
+Модель сессии текстовая (`input_modalities: ["text"]`) — картинки не
+видит; распознавание — внешний сервис.
+
+- `scripts/vision-ask.sh IMAGE [ВОПРОС]` — шлёт картинку в Cloudflare
+  Workers AI (free tier, 10k кредитов/день) и печатает ответ модели;
+  модель — `VISION_MODEL` (по умолчанию `@cf/qwen/qwen3.8-27b`),
+  лимит ответа — `VISION_MAX_TOKENS` (2000).
+- Ключи — хостовый `/etc/llama/cloudflare-ai.env` (600: `CF_ACCOUNT_ID`,
+  `CF_API_TOKEN`); из toolbx скрипт сам читает `/run/host/etc/...`.
+- **Содержимое картинки уходит на Cloudflare** — для чувствительных
+  данных не использовать (приватный вариант — локальная VL-модель,
+  отчёт §2.1).
+- Изыскания и мемо:
+  `docs/superpowers/reports/2026-09-03-vision-research.md`,
+  `docs/superpowers/memos/2026-09-03-vision-ask.md`.
 
 ## Процесс: работа под superpowers (координатор)
 

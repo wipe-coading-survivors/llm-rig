@@ -36,9 +36,16 @@ check_count "llama-run.sh: no --rm" "$run" '--rm' 0
 check_count "llama-run.sh: no -ti" "$run" '-ti' 0
 check_count "llama-run.sh: named container" "$run" '--name llama-cpp' 1
 check_count "llama-run.sh: rm -f before run" "$run" 'rm -f llama-cpp' 1
-check_count "llama-run.sh: /etc/llama mount" "$run" '-v /etc/llama:/root/llama:ro' 1
+check_count "llama-run.sh: /etc/llama mount" "$run" '-v /etc/llama:/llama:ro' 1
 check_count "llama-run.sh: CRE detection kept" "$run" '/run/.containerenv' 1
-check_count "llama-run.sh: shm-size 64g" "$run" '--shm-size=64g' 1
+check_count "llama-run.sh: shm-size 1g" "$run" '--shm-size=1g' 1
+check_count "llama-run.sh: non-root user" "$run" '-u 1001001:0' 1
+check_count "llama-run.sh: memory limit 120g" "$run" '-m 120g' 1
+check_count "llama-run.sh: memlock ulimit" "$run" '--ulimit memlock=-1:-1' 1
+check_count "llama-run.sh: nvidiactl device" "$run" '--device /dev/nvidiactl' 1
+check_count "llama-run.sh: nvidia-uvm device" "$run" '--device /dev/nvidia-uvm' 1
+check_count "llama-run.sh: no --privileged" "$run" '--privileged' 0
+check_count "llama-run.sh: models-preset /llama" "$run" '--models-preset /llama/llama.ini' 1
 
 # --- llama-send.py: KEYFILE branch by /run/.containerenv ---
 check_count "llama-send.py: containerenv branch" "$send" 'os.path.isfile("/run/.containerenv")' 1
@@ -46,7 +53,9 @@ check_count "llama-send.py: toolbx key path" "$send" '"/run/host/etc/llama/llama
 check_count "llama-send.py: host key path" "$send" '"/etc/llama/llama-cpp-keys.txt"' 1
 
 # --- repro-llama-block3-run.sh: stage-14 paths + stage-15 unit-aware prod control ---
-check_count "repro: /etc/llama mounts x3" "$repro" '-v /etc/llama:/root/llama:ro' 3
+check_count "repro: /etc/llama mount /llama (C2)" "$repro" '-v /etc/llama:/llama:ro' 1
+check_count "repro: /etc/llama mounts /root/llama (stubs x2)" "$repro" '-v /etc/llama:/root/llama:ro' 2
+check_count "repro: C2 models-preset /llama" "$repro" '--models-preset /llama/llama.ini' 1
 check_count "repro: no llama-cpp-numa" "$repro" 'llama-cpp-numa' 0
 check_count "repro: PROD=llama-cpp" "$repro" 'PROD=llama-cpp' 1
 check_count "repro: no CUDA_VISIBLE_DEVICES" "$repro" 'CUDA_VISIBLE_DEVICES' 0
