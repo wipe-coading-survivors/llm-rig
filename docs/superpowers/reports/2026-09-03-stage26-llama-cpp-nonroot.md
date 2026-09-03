@@ -116,3 +116,23 @@ idle (нет in-flight-генерации), stop→ready 106 s, opencode пер�
 mount+preset, keyed-эндпоинты, GPU/model-load, лимит 120g, рестарт
 без потерь (3.3 мин, verify 200). Fallback'и R1/R2 не использовались.
 Этап закрыт.
+
+## 8. Post-окно (16:55–19:49 MSK)
+
+- Динамика с активной сессией (sampler, 10 мин): 13.25 → 26.93 GB
+  (плато в idle) → 35.8 → 44.5 → 80.2 → 102.5 GB; к 18:55 cgroup
+  прижат к потолку 120g (128.847/128.849 GiB), file-кэш модели
+  рекалмится 29.9 → 7.8 GiB как кушон, anon → 111.9 GiB (pool
+  cache-ram + KV живых слотов). OOM нет — но потолок достигнут.
+- `erasing old context checkpoint` в логах (23×, слот 1, ~570 MiB
+  каждое) — штатная ротация SWA-checkpoints (`--swa-checkpoints 64`),
+  не признак давления; evictions pool'а нет.
+- `llama-server --metrics` (роутер, keyed): только токены/тайминги/
+  spec-decode — память в Prometheus не отдаётся.
+- Решение оператора (19:40): `LLAMA_MEM 120g → 160g` (worst case:
+  pool 128 + KV 2×215k ~20 + shmem 2 ≈ 150; модель при mlock на
+  практике reclaimable — 22GB-кушон — но запас на KV обязателен).
+- Рестарт 19:43:41: t0→t1 102 s, t1→t2 24 s (тёплый NFS), verify
+  2 s, `done rc=0`. Приёмка: `uid=1001001 gid=0`, `memory.max =
+  171798691840` (160 GiB), 19.5/171.8 GB после старта, модель
+  loaded, keyed 200.
