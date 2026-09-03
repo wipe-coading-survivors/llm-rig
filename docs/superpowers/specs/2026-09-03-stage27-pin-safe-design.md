@@ -161,8 +161,10 @@ n=<int>`. Хелпер пишет; оператор только `rm`. Пуст�
   строке pin; в логе повторяется только в строке pin)
 - блок (только для `Default` — единственного OC-профиля;
   `idle`/`safe` не блокируются): `pin: transition to Default blocked
-  (load=busy) — fix the root cause: OC under an unresolved issue
-  degrades the GPU` (первый — сразу, далее не чаще 1/PIN_LOG_EVERY)
+  (<reason>) — fix the root cause: OC under an unresolved issue
+  degrades the GPU`, `<reason>` — причина решения на момент блока
+  (`active`, `auth-streak`) (первый — сразу, далее не чаще
+  1/PIN_LOG_EVERY)
 - снятие: `pin: released (age=42m) — actual=safe adopted, switching
   resumed` (age = now−ts из файла; опускается, если ts неизвестен —
   внешний pin с пустым/мусорным содержимым)
