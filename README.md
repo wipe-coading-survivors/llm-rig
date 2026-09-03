@@ -65,6 +65,12 @@ sysconfig с дефолтами (OC-параметры, `LLAMA_*`: образ, �
 `LLAMA_UID`/`LLAMA_MEM`/`LLAMA_SHM_SIZE`), keys `chmod 640`.
 `daemon-reload` + `enable` — стек поднимается на боте.
 
+После пересборки driver-стадии (образы kmod/driver/lact):
+`systemctl restart nvidia-kmod nvidia-card-setting lact-autoswitch`;
+`llama-cpp` — протоколом Этапа 25 (`make llama-cpp-restart
+MODE=restart`). Pin `safe` (Этап 27) при этом переживает рестарты
+(файл в `/run`).
+
 Эксплуатация живого сервера (эндпоинты, ключи, рестарт-протокол,
 память) — `LIVE-SERVER.md`.
 
