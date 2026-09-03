@@ -52,6 +52,9 @@ check_count "zombie pattern 2 (D6, 30.08)" "$script" 'CUDA error: an internal op
 check_count "journal unit scope" "$script" '-f -u "$UNIT"' 1
 check_count "history scan" "$script" 'ActiveEnterTimestamp' 1
 check_count "cooldown" "$script" 'COOLDOWN=120' 1
+check_count "crash events file (stage 27)" "$script" 'CRASH_EVENTS_FILE=${CRASH_EVENTS_FILE:-/run/lact-autoswitch/crashes}' 1
+check_count "crash events: mkdir events dir" "$script" 'mkdir -p "$(dirname "$CRASH_EVENTS_FILE")"' 1
+check_count "crash events: trim 100 (tmp+mv)" "$script" 'tail -n 100 "$CRASH_EVENTS_FILE" > "$CRASH_EVENTS_FILE.tmp"' 1
 check_count "no unit control: stop" "$script" 'systemctl stop' 0
 check_count "no unit control: start" "$script" 'systemctl start' 0
 check_count "no dmesg polling" "$script" 'dmesg' 0
@@ -104,6 +107,24 @@ chmod +x "$shim_bin/podman"
 
 reset_kill_log() {
     rm -f "$FAKE_KILL_LOG"
+}
+
+CRASH_EVENTS_FILE=$tmp/crashes
+export CRASH_EVENTS_FILE
+
+# desc, expected line count (file absent -> 0)
+check_events() {
+    desc=$1; want=$2
+    if [ -f "$CRASH_EVENTS_FILE" ]; then
+        got=$(wc -l < "$CRASH_EVENTS_FILE")
+    else
+        got=0
+    fi
+    if [ "$got" -eq "$want" ]; then
+        ok "$desc"
+    else
+        ko "$desc" "$want lines" "$got lines; watcher: $(cat "$tmp/watcher.out" 2>/dev/null)"
+    fi
 }
 
 # lines-file, unit-state; реальный watcher против shim'ов (фейковый
@@ -174,6 +195,34 @@ reset_kill_log
 } > "$tmp/lines-pattern2.txt"
 run_watcher "$tmp/lines-pattern2.txt" active
 check_kills "kill: pattern-2 line (internal operation failed), unit active" 1
+
+# 4.6 crash events (stage 27): паттерн-строка -> 1 epoch-строка
+reset_kill_log
+rm -f "$CRASH_EVENTS_FILE"
+run_watcher "$tmp/lines-pattern.txt" active
+check_events "crash events: pattern line -> 1 event" 1
+
+# 4.7 обычные строки -> файла нет
+rm -f "$CRASH_EVENTS_FILE"
+run_watcher "$tmp/lines-normal.txt" active
+check_events "crash events: normal lines -> no file" 0
+
+# 4.8 cooldown-дубли -> 1 событие
+rm -f "$CRASH_EVENTS_FILE"
+run_watcher "$tmp/lines-double.txt" active
+check_events "crash events: duplicate line -> single event" 1
+
+# 4.9 guard: юнит inactive -> ни kill, ни события
+reset_kill_log
+rm -f "$CRASH_EVENTS_FILE"
+run_watcher "$tmp/lines-pattern.txt" inactive
+check_kills "guard: unit inactive -> no kill (events)" 0
+check_events "guard: unit inactive -> no event" 0
+
+# 4.10 trim: 105 предзаполненных + 1 новое -> 100
+seq 1 105 | while read -r n; do echo "$((1786000000 + n))"; done > "$CRASH_EVENTS_FILE"
+run_watcher "$tmp/lines-pattern.txt" active
+check_events "crash events: trim 106 -> 100" 100
 
 echo "# pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
