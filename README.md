@@ -69,7 +69,9 @@ sysconfig с дефолтами (OC-параметры, `LLAMA_*`: образ, �
 `systemctl restart nvidia-kmod nvidia-card-setting lact-autoswitch`;
 `llama-cpp` — протоколом Этапа 25 (`make llama-cpp-restart
 MODE=restart`). Pin `safe` (Этап 27) при этом переживает рестарты
-(файл в `/run`).
+(файл в `/run`). Снятие пина — `rm /run/lact-autoswitch/pin`; если
+цикл крахов закончен, также `rm /run/lact-autoswitch/crashes` (иначе
+свежее событие в окне 600 c переставит pin).
 
 Эксплуатация живого сервера (эндпоинты, ключи, рестарт-протокол,
 память) — `LIVE-SERVER.md`.
