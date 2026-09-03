@@ -143,6 +143,9 @@ pin: released (age=2m) - actual=Default adopted, switching resumed
 - R5: AttributeError-guard вокруг блока 17 чеков — конвенция файла,
   без него RED погибает traceback'ом до TAP-сводки.
 - R6: два grep-пина плана непроходимы (см. девиации).
+- R7 (final review): ceiling-фикс — при `fallback_on` подавляемый
+  target := `safe` (не `HOLD`), иначе socket-up HOLD релизил бы
+  fallback в stock 170/180 W (см. «Final review + fix wave»).
 
 ## Наблюдения (не дефекты)
 
@@ -164,10 +167,43 @@ pin: released (age=2m) - actual=Default adopted, switching resumed
 - Кандидат в TODO: fan-fail (температура растёт и под safe PL 120)
   — см. TODO «Кандидаты на этапы».
 
+## Final whole-branch review + fix wave
+
+Ревью (весь диапазон ветки) вернуло один Important —
+кросс-задачный разрыв, невидимый для per-task ревью:
+pin-blocked `HOLD` при **socket up** + активном `fallback_on`
+(эпизод socket-down/overtemp) запускал существующую 16.2-ветку
+`release_fallback()` — stock-дефолты **4x170 + LHR 180 W** (выше OC
+140 W и выше safe-потолка 120 W), при этом state-машина хелпера
+этого не видит. До ветки `HOLD` был достижим только при socket down
+(`decide_target`), новая ceiling сделала socket-up HOLD реальным.
+
+**Ruling R7 — фикс** (`eaf5df7`): в ceiling-блоке при `fallback_on`
+подавляемый target роутится в `safe` (не `HOLD`) — socket up, демон
+на связи, существующий механизм apply заменяет raw-фолбэк полным
+safe-профилем (PL 120 + fan + offsets), `fallback_on` чистится.
+Спека §4.2 дополнена одной строкой. В тот же wave (re-review:
+все findings ADDRESSED, new breakage — None):
+`4783501` — functional-тест mkdir -p несуществующего каталога
+(спека §6, был только structural pin); `d6bac84` — runbook: снятие
+пина = `rm` pin-файла (+ `rm` crashes-файла, если цикл крахов
+закончен, иначе re-pin в окне 600 c).
+
+## Fresh-deploy после fix wave (01:26 MSK)
+
+Хелпер изменился после live-окна → пересборка + деплой
+(COORDINATOR-правило): `make nvidia-lact-autoswitch`
+(образ `...:v0.10.0`, `c88a29368e3e`, COPY-слой) + `make systemd` +
+`systemctl restart lact-autoswitch` — active, `start: key found`,
+`pin:`-строк нет, power.limit = 140.00 W (OC), `pin`/`crashes`
+файлов нет.
+
 ## Коммиты (ветка `stage27-pin-safe`)
 
 `b40e2ba` watcher-события · `d248caf` plan fix R4 · `8755fed`
 чистые pin-функции + TAP + README-сьют · `29d7732` plan fix R5 ·
 `d5a7497` аддендум спеки · `ca446f7` pin-состояние main-loop ·
 `456bd13` деплой (unit/sysconfig/пины) · `795407c` plan fix R6 ·
-`c09a0b1` README runbook-строка · (закрытие: TODO + отчёт).
+`c09a0b1` README runbook-строка · `3ea9fe1` TODO + close-отчёт ·
+`eaf5df7` fix: ceiling→safe при fallback (R7) · `4783501`
+mkdir-тест · `d6bac84` runbook rm-crashes.
