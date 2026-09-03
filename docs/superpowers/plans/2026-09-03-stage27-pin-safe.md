@@ -411,7 +411,7 @@ def write_pin_file(path, reason, count, window, ts, n):
 - [ ] **Step 4: Прогон — зелёный**
 
 Run: `python3 scripts/test-lact-autoswitch.py`
-Expected: все `ok`, `# pass=N fail=0` (N = 53 + 19 новых = 72).
+Expected: все `ok`, `# pass=N fail=0` (N = 53 + 17 новых = 70).
 
 - [ ] **Step 5: README — .py-тест в сьют**
 
@@ -605,7 +605,7 @@ git commit -m "docs: stage 27 spec addendum — block log line carries the decis
 - [ ] **Step 7: Синтаксис + полный сьют**
 
 Run: `python3 -m py_compile resources/driver/lact-autoswitch.py && python3 scripts/test-lact-autoswitch.py | tail -1`
-Expected: `# pass=72 fail=0` (функции не тронуты).
+Expected: `# pass=70 fail=0` (функции не тронуты).
 Run: команда полного сьют из Global Constraints.
 Expected: все зелёные.
 
