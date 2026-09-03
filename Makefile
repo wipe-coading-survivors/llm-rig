@@ -396,7 +396,10 @@ systemd:
 	  --build LLAMA_IMAGE=$(LLAMA_CPP_IMAGE) \
 	  --default LLAMA_LOG_TIMESTAMPS=1 \
 	  --default LLAMA_PORT=$(LLAMA_PORT) \
-	  --default LLAMA_SHM_SIZE=64g
+	  --default LLAMA_SHM_SIZE=1g \
+	  --default LLAMA_UID=1001001 \
+	  --default LLAMA_MEM=120g
+	if [ -f $(HOST_ROOT)$(LLAMA_KEYS_FILE) ] ; then chmod 640 $(HOST_ROOT)$(LLAMA_KEYS_FILE) ; fi
 	$(SYSTEMDCTL) daemon-reload
 	$(SYSTEMDCTL) enable nvidia-kmod.service nvidia-card-setting.service llama-cpp.service var-local-llm.mount lact-autoswitch.service llama-cpp-watcher.service
 
