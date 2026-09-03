@@ -67,10 +67,29 @@ LLM (NVIDIA): модули ядра, драйвер, OC/авто-свитч, р�
       таймлайна; приёмка — сессия переживает рестарт (02.09, отчёт
       `docs/superpowers/reports/2026-09-02-stage25-safe-restart.md`)
 
-### 26. Non-root окружение (пока на подумать, без спеки)
-- [ ] разработку вести от имени обычного пользователя (не root)
-- [ ] привилегированные действия — через `sudo`
-- [ ] перейти на container-registry (рассмотреть ghcr или локальный)
+### 26. llama-cpp non-root
+
+Решение (03.09): откат на root build/deploy/debug (rootful toolbx) —
+из «Non-root окружения» оставляем только запуск контейнера `llama-cpp`
+non-root (`-u ${LLAMA_UID}:0`, без `--privileged`).
+
+- [ ] `llama-cpp.service`: снять `--privileged`; добавить
+      `-u ${LLAMA_UID}:0`, `-m ${LLAMA_MEM}`, `--ulimit memlock=-1:-1`
+      (модель mlock); маунт `/etc/llama:/llama:ro` + `--models-preset
+      /llama/llama.ini` (non-root не видит `/root`)
+- [ ] keys `/etc/llama/llama-cpp-keys.txt`: `chmod 640` (root:root,
+      group 0 читает) — idempotent-шаг в `make systemd`
+- [ ] sysconfig `llama-cpp`: `LLAMA_UID=1001001`, `LLAMA_MEM=150g`,
+      `LLAMA_SHM_SIZE=1g` (было 64g; провенанс «выгрузить KV в
+      /dev/shm» — гугль; факт 185M = NCCL/CUDA IPC, KV в host RAM)
+- [ ] `test-systemd-units.sh` (pin новых флагов), `LIVE-SERVER.md`
+      (non-root + цифры памяти); containerfile — без изменений
+      (`/app` уже 755)
+- [ ] live-окно: safe-restart → `podman exec llama-cpp id` = non-root,
+      keyed-эндпоинты, GPU/model-load, memlock, память < 150g
+
+Отменено (откат на root): non-root-dev, привилегии через `sudo`,
+container-registry (ghcr/локальный).
 
 ## Перенесено из архива (старая нумерация)
 
