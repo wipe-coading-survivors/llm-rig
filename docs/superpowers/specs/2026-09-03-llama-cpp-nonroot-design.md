@@ -173,8 +173,9 @@ fi
   - keys chmod: до `make systemd` создать в hostroot тесте
     `etc/llama/llama-cpp-keys.txt` mode `600` → после таргета
     assert mode `640` (позитивный кейс guard'а §2).
-- `scripts/test-debug-scripts.sh`: строки маунтов → `/llama:ro`
-  (llama-run count 1, repro count 3); новые пины mirror-флагов
+- `scripts/test-debug-scripts.sh`: llama-run mount → `/llama:ro`
+  (count 1); repro: C2 → `/llama:ro` (count 1) + стубы `/root/llama:ro`
+  (count 2, без изменений — F13); новые пины mirror-флагов
   llama-run.sh (`-u 1001001:0`, `-m 120g`, `--ulimit memlock=-1:-1`,
   `nvidiactl`/`nvidia-uvm`, `--models-preset /llama/llama.ini`).
 - Остальные тесты (`test-llama-cpp-restart.sh`,
@@ -210,7 +211,8 @@ fi
    - GPU/model-load: `/v1/models` `loaded`, tensor-split 5×,
      args-сверка (тождество контейнера);
    - memlock: `Max locked memory` = `unlimited` в
-     `/proc/<instance-pid>/limits` (host pid — из `ps` в контейнере);
+     `/proc/1/limits` (pid 1 контейнера = ulimit контейнера; PID-
+     неймспейс свой — host pid не использовать);
    - shm: `df /dev/shm` = `1.0G`;
    - память (F8/F16): `podman stats` + cgroup
      `machine.slice/libpod-<id>.scope/memory.{current,stat}` — baseline
