@@ -385,6 +385,11 @@ systemd:
 	  --default LLAMA_KEYS_FILE=$(LLAMA_KEYS_FILE) \
 	  --default KEY_MARKER=lact-autoswitch \
 	  --default POLL_INTERVAL=5 \
+	  --default CRASH_PIN_COUNT=3 \
+	  --default CRASH_PIN_WINDOW=600 \
+	  --default THERMAL_PIN_COUNT=3 \
+	  --default THERMAL_PIN_WINDOW=1800 \
+	  --default PIN_LOG_EVERY=300 \
 	  --default THERMAL_EVERY=3 \
 	  --default TIME_IDLE=120 \
 	  --default TIME_DOWN=300 \
