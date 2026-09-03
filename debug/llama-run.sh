@@ -11,10 +11,13 @@ $CRE rm -f llama-cpp
 exec $CRE run -d --name llama-cpp \
   --device /dev/nvidia0 --device /dev/nvidia1 --device /dev/nvidia2 \
   --device /dev/nvidia3 --device /dev/nvidia4 \
-  --security-opt label=disable --privileged --shm-size=64g \
+  --device /dev/nvidiactl --device /dev/nvidia-uvm \
+  --security-opt label=disable --shm-size=1g \
+  -u 1001001:0 -m 120g \
+  --ulimit memlock=-1:-1 \
   -v /var/local/llm/gguf-models:/models \
-  -v /etc/llama:/root/llama:ro \
+  -v /etc/llama:/llama:ro \
   -p 8080:8080 \
   -e LLAMA_LOG_TIMESTAMPS=1 \
   localhost/llama-cpp-cuda:13.3 --port 8080 --host 0.0.0.0 \
-  --models-preset /root/llama/llama.ini
+  --models-preset /llama/llama.ini
