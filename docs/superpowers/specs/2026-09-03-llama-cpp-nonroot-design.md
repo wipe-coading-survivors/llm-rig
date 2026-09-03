@@ -1,12 +1,15 @@
 # Спека: llama-cpp non-root (Этап 26)
 
 - Дата: 03.09.2026
-- Статус: дизайн утверждён пользователем (03.09.2026); A/B `LLAMA_MEM`
-  (128/140/160) в live-окне — решение пользователя 03.09.2026
+- Статус: раунд 1 (03.09.2026): дизайн утверждён; **`LLAMA_MEM=120g` —
+  стартовое значение, без A/B** (решение пользователя 03.09.2026:
+  потребление растёт с накопленным трафиком без плато-гарантии, «с каждым
+  расчётом размер только увеличивается» — при OOM оператор сам выставит
+  нужное значение в sysconfig)
 - Источник: `TODO.md`, Этап 26 (решение 03.09: откат на root
   build/deploy/debug; из «Non-root окружения» остаётся только запуск
   контейнера `llama-cpp` non-root)
-- Основа: брейншторм 03.09.2026 + live-верификация фактов F1–F15 на
+- Основа: брейншторм 03.09.2026 + live-верификация фактов F1–F16 на
   хосте (toolbx, CRE=podman-remote)
 - Связь: после ревью — план (writing-plans) → SDD → live-окно →
   finishing (merge в `main`)
@@ -33,9 +36,11 @@ Containerfile — без изменений (`/app` уже 755, F2).
    скрипты, живущие с live ini.
 4. Пины: `test-systemd-units.sh`, `test-makefile-graph.sh`,
    `test-debug-scripts.sh`; `LIVE-SERVER.md` (топология + цифры).
-5. Live-окно: A/B `LLAMA_MEM` 128/140/160 (F8: steady-state 143.5 GB —
-   дозарачивать не нужно) + приёмка (id non-root, keyed-эндпоинты,
-   GPU/model-load, memlock, shm, память с запасом).
+5. Live-окно: деплой с `LLAMA_MEM=120g` + приёмка (id non-root,
+   keyed-эндпоинты, GPU/model-load, memlock, shm) + замеры памяти
+   (baseline при пустом пуле + динамика; F8/F16: потребление растёт с
+   накопленным трафиком — OOM при заполнении пула на 120g ожидаем и
+   задокументирован, не отказ этапа).
 
 ## Не цели (отменено решением 03.09)
 
@@ -58,7 +63,8 @@ Containerfile — без изменений (`/app` уже 755, F2).
 | F5 | Проба (одноразовый `--rm` контейнер, не трогая live): `-u 1001001:0` + только `--device nvidiactl/nvidia0/nvidia-uvm` + `label=disable`, без privileged → `nvidia-smi` работает (GPU0, 12288 MiB); `id` = `uid=1001001(1001001) gid=0(root)`; `HOME=/app` (нет passwd-записи → podman ставит HOME=WORKDIR) |
 | F6 | `/dev/shm`: 185M занято из 64G (NCCL/CUDA IPC) → `1g` достаточно |
 | F7 | Хост RAM: 252 GiB (`MemTotal 263982244 kB`) |
-| F8 | Live-контейнер `MEM USAGE = 143.5 GB` (`podman stats`, 03.09) → steady-state выше 128g/140g: `-m 128g/140g` упрётся в OOM без дозарачивания; маржа до 160g ≈ 16.5 GB |
+| F8 | Потребление host RAM контейнера **растёт с накопленным трафиком и не гарантированно возвращается вниз**: `podman stats` 03.09 — 143.5 GB в 09:5x → 211.7 GB к ~10:1x → плато **212.5 GB** (0.00 GB/60 s) при `cache-ram=131072` (128 GiB пул KV заполняется сессиями; эвикшенов за 6 ч до замера — 0); для сравнения, 09.02 (отчёт cache-ram): 3 крупные сессии = RSS 92.8 GB. Т.е. «steady-state» = f(накопленных сессий от последнего рестарта); 160g при текущей нагрузке (212.5 GB) не выдержит, при нагрузке уровня 09.02 — с запасом |
+| F16 | Точность показаний: `podman stats` MEM USAGE = cgroup `memory.current` (совпало при сверке: 211.7 GB vs 210.0 GB в момент замера) — расхождение с «143.5 GB» было движением потребления, а не неточностью. Состав: `machine.slice/libpod-<id>.scope/memory.stat` — **anon ≈ 99%** (сейчас 193/195 GiB), file ~2 GiB; anon = mlock-модель + KV-пул + host-буферы (не сжимается cgroup-лимитом) |
 | F9 | Host `/etc/sysconfig/llama-cpp`: `LLAMA_IMAGE=llama-cpp-cuda:13.3`, `LLAMA_LOG_TIMESTAMPS=1`, `LLAMA_PORT=8080`, `LLAMA_SHM_SIZE=64g`; `LLAMA_UID`/`LLAMA_MEM` отсутствуют. `sysconfig-gen --default` существующее значение **не** перезаписывает → one-shot мигрейшн `64g→1g` нужен отдельно |
 | F10 | Live `/etc/llama/llama.ini` (host-файл, не в репо): `api-key-file = /root/llama/llama-cpp-keys.txt`, `ctx-size=430000`, `load-mode=mlock`, `cache-ram=131072` → после смены маунта на `/llama` строка `api-key-file` должна стать `/llama/llama-cpp-keys.txt` |
 | F11 | `/etc/llama/llama-cpp-keys.txt` = `600 root:root`; `/etc/llama` = `755` → `chmod 640` даёт чтение gid 0 (container-user `1001001:0`) |
@@ -108,8 +114,8 @@ privileged остаются только явные `--device`), `-u ${LLAMA_UID
 ### 2. `Makefile` (таргет `systemd`)
 
 - sysconfig-gen `llama-cpp`: `--default LLAMA_UID=1001001`,
-  `--default LLAMA_MEM=160g` (предварительно — финал по A/B §7, при
-  расхождении дефолт правится пост-оконным коммитом),
+  `--default LLAMA_MEM=120g` (стартовое значение; решение 03.09 —
+  при OOM оператор сам выставляет нужное в host sysconfig, F8),
   `--default LLAMA_SHM_SIZE=64g` → `1g` (F6).
 - Keys chmod (idempotent, guard по F15; путь из существующей
   `$(LLAMA_KEYS_FILE)`):
@@ -137,7 +143,7 @@ fi
 
 - `debug/llama-run.sh` — **полный mirror нового юнита**: те же
   devices (0-4 + nvidiactl + nvidia-uvm), `--security-opt
-  label=disable --shm-size=1g`, `-u 1001001:0 -m 160g`, `--ulimit
+  label=disable --shm-size=1g`, `-u 1001001:0 -m 120g`, `--ulimit
   memlock=-1:-1`, маунт `/etc/llama:/llama:ro`,
   `--models-preset /llama/llama.ini` (значения зашиты — стиль файла;
   CRE-detection и `rm -f`/`--name` как есть). Header-заявка «manual
@@ -161,13 +167,13 @@ fi
     autoswitch-пин `--privileged` не трогать).
 - `scripts/test-makefile-graph.sh`:
   - `LLAMA_SHM_SIZE=64g` → `1g` (F14);
-  - новые syscfg-пины: `LLAMA_UID=1001001`, `LLAMA_MEM=160g`;
+  - новые syscfg-пины: `LLAMA_UID=1001001`, `LLAMA_MEM=120g`;
   - keys chmod: до `make systemd` создать в hostroot тесте
     `etc/llama/llama-cpp-keys.txt` mode `600` → после таргета
     assert mode `640` (позитивный кейс guard'а §2).
 - `scripts/test-debug-scripts.sh`: строки маунтов → `/llama:ro`
   (llama-run count 1, repro count 3); новые пины mirror-флагов
-  llama-run.sh (`-u 1001001:0`, `-m 160g`, `--ulimit memlock=-1:-1`,
+  llama-run.sh (`-u 1001001:0`, `-m 120g`, `--ulimit memlock=-1:-1`,
   `nvidiactl`/`nvidia-uvm`, `--models-preset /llama/llama.ini`).
 - Остальные тесты (`test-llama-cpp-restart.sh`,
   `test-llama-cpp-watcher.sh`, `test-no-sensitive.sh`, ...) — без
@@ -181,10 +187,10 @@ fi
     + uvm), `-m ${LLAMA_MEM}`, `--ulimit memlock=-1:-1`, маунт
     `/llama` + preset, shm `1g` (F6: 185M NCCL/CUDA IPC);
   - «Ключи»: mode `640 root:root` (gid 0 читает);
-  - «Числа»: результаты A/B §7 (OOM-точки 128/140, замеры 160 с
-    разбором `memory.stat` anon/file).
-- `TODO.md`: чекбоксы Этапа 26, ссылка на отчёт, при расхождении A/B —
-  финальное `LLAMA_MEM`.
+  - «Числа»: замеры §7 (baseline при пустом пуле, динамика, разбор
+    `memory.stat` anon/file; F8/F16: рост с накопленным трафиком).
+- `TODO.md`: чекбоксы Этапа 26, ссылка на отчёт, `LLAMA_MEM=120g`
+  (стартовое; оператор поднимает при OOM).
 
 ### 7. Live-окно (после SDD-реализации)
 
@@ -195,40 +201,43 @@ fi
    keys mode `640`.
 3. Host-правки: one-shot sed `64g→1g` (F9), ini `api-key-file`
    (F10). Проверка: `grep LLAMA_SHM_SIZE` = `1g`, `grep api-key-file`.
-4. A/B `LLAMA_MEM` (редактирование host sysconfig + `MODE=restart`):
-   - **128g**: ожидаем OOM-килл (crash loop; steady-state 143.5 GB,
-     F8) → по `journalctl -lu llama-cpp --since` фиксируем oom-строки и
-     точку падения → `MODE=stop` (разорвать цикл, R3).
-   - **140g**: то же (143.5 > 140: OOM по мере re-fill пула нашей
-     сессией) → `MODE=stop`.
-   - **160g**: `MODE=restart` → ready → приёмка:
-     - `podman-remote exec llama-cpp id` = `uid=1001001 gid=0`;
-     - keyed-эндпоинты: `/slots` (Bearer) + verify POST 200;
-     - GPU/model-load: `/v1/models` `loaded`, tensor-split 5×,
-       args-сверка (тождество контейнера);
-     - memlock: `Max locked memory` = `unlimited` в
-       `/proc/<instance-pid>/limits`;
-     - shm: `df /dev/shm` = `1.0G`;
-     - память: `podman stats` + cgroup `memory.current`/`memory.stat`
-       (anon vs file) под нагрузкой (наша сессия + до-префилл) —
-       ответ на вопрос точности показаний (F8);
-     - сессия переживает рестарт (написание отчёта = приёмка).
-5. Финал: при расхождении A/B с 160g — правка Makefile-дефолта;
-   отчёт `docs/superpowers/reports/2026-09-0X-stage26-llama-cpp-
-   nonroot.md`; `LIVE-SERVER.md` «Числа» + «Топология»; `TODO.md`.
-6. Статика: полный тест-сьют зелёный.
+4. `LLAMA_MEM=120g` (sysconfig уже из шага 2; A/B отменено решением
+   03.09): `MODE=restart` → ready → приёмка:
+   - `podman-remote exec llama-cpp id` = `uid=1001001 gid=0`;
+   - keyed-эндпоинты: `/slots` (Bearer) + verify POST 200;
+   - GPU/model-load: `/v1/models` `loaded`, tensor-split 5×,
+     args-сверка (тождество контейнера);
+   - memlock: `Max locked memory` = `unlimited` в
+     `/proc/<instance-pid>/limits` (host pid — из `ps` в контейнере);
+   - shm: `df /dev/shm` = `1.0G`;
+   - память (F8/F16): `podman stats` + cgroup
+     `machine.slice/libpod-<id>.scope/memory.{current,stat}` — baseline
+     сразу после ready (пустой пул: mlock-модель + host-буферы +
+     re-префилл нашей сессии) и динамика через интервалы окна (рост с
+     трафиком — ожидаемо, не дефект);
+   - сессия переживает рестарт (написание отчёта = приёмка).
+5. OOM на 120g (ожидан по F8 при накоплении трафика; возможно и в окне):
+   зафиксировать oom-строки `journalctl` + `memory.current` в момент
+   падения → поднять `LLAMA_MEM` в host sysconfig (операторское
+   значение по факту) → `MODE=restart` → продолжить/завершить
+   приёмку. Не отказ этапа: финальное значение — зона оператора
+   (решение 03.09).
+6. Финал: отчёт `docs/superpowers/reports/2026-09-0X-stage26-llama-cpp-
+   nonroot.md` (замеры, OOM-точка если была); `LIVE-SERVER.md` «Числа»
+   + «Топология»; `TODO.md` (чекбоксы, `LLAMA_MEM=120g`).
+7. Статика: полный тест-сьют зелёный.
 
 ## Риски и митигации
 
 | # | Риск | Митигация |
 |---|---|---|
-| R1 | `nvidia-caps/nvidia-cap1,2` = `440 root:root` (F3): открыты в текущем инстансе (F4), non-root их не откроет; нужны ли они для полного CUDA-контекста — неизвестно (проба F5 — уровень `nvidia-smi`) | Live-окно решающий: приёмка GPU/model-load на 160g. Fallback: one-shot/udev `chmod 640 root:root` host-nodes cap1/2 + `--device /dev/nvidia-caps/nvidia-cap1|2` в юнит (+пины) — пост-оконным коммитом |
+| R1 | `nvidia-caps/nvidia-cap1,2` = `440 root:root` (F3): открыты в текущем инстансе (F4), non-root их не откроет; нужны ли они для полного CUDA-контекста — неизвестно (проба F5 — уровень `nvidia-smi`) | Live-окно решающий: приёмка GPU/model-load на 120g. Fallback: one-shot/udev `chmod 640 root:root` host-nodes cap1/2 + `--device /dev/nvidia-caps/nvidia-cap1|2` в юнит (+пины) — пост-оконным коммитом |
 | R2 | `--privileged` bypass'ил seccomp/apparmor; non-privileged контейнер под default-профилями — CUDA/NCCL может упереться в syscall | Стандартный non-privileged NVIDIA-сетап работает под default seccomp (конвенция nvidia-container); live-окно решающий. Fallback: `--security-opt seccomp=unconfined` (и/или `apparmor=unconfined`) — изоляция слабее, фикс в отчёте |
-| R3 | OOM crash loop на 128/140 (юнит `Restart=always`, `RestartSec=30`) | По наблюдению oom-строк — `MODE=stop`; даунтайм ограничен; watcher не реагирует (нет zombie-сигнатур) |
+| R3 | OOM на `120g` (юнит `Restart=always`, `RestartSec=30` → crash loop) — ожидаем при накоплении трафика (F8), возможно и в окне | Протокол §7.5: oom-строки + замер → `MODE=stop` → поднять `LLAMA_MEM` в host sysconfig → `MODE=restart`; watcher не реагирует (нет zombie-сигнатур) |
 | R4 | `HOME=/app` не writable для non-root (F5) → nvJitLink cache-варнинг | Не фатально: cubin'ы для arch 86 в бандле (F2/образ); наблюдение по логу в окне. Если станет проблемой — `-e HOME=/tmp` в юнит |
-| R5 | Сессия координатора умирает на каждом рестарте (A/B = 3+ рестарта) | По дизайну (Этап 25): `setsid -f` + status-файл; координатор опрашивает status |
+| R5 | Сессия координатора умирает на рестарте окна | По дизайну (Этап 25): `setsid -f` + status-файл; координатор опрашивает status |
 | R6 | Пропущен one-shot `64g→1g` (F9) → юнит молча держит 64g (не падает, только перерасход) | Шаг §7.3 с явной проверкой `grep LLAMA_SHM_SIZE` |
-| R7 | `LLAMA_MEM`-дефолт Makefile (160g) может расстроиться с итогом A/B | Пост-оконный коммит правит дефолт + пины (graph-тест, `debug/llama-run.sh` + `test-debug-scripts.sh`) + `LIVE-SERVER.md` (шаг §7.5) |
+| R7 | `LLAMA_MEM=120g` — стартовое; при накоплении трафика (F8) лимит будет упирается: OOM | По решению 03.09 — зона оператора: поднять `LLAMA_MEM` в host sysconfig + `make systemd`/`MODE=restart`; дефолт Makefile меняется отдельным решением (пост-оконным коммитом правятся дефолт + пины graph-теста/`debug/llama-run.sh` + `LIVE-SERVER.md`) |
 
 ## Критерии готовности
 
@@ -239,8 +248,9 @@ fi
   `scripts/test-debug-scripts.sh`, `LIVE-SERVER.md`, `TODO.md`, отчёт;
   containerfile — без изменений (F2);
 - тест-сьют зелёный (все существующие + обновлённые пины);
-- live-окно: A/B 128/140/160 по протоколу §7, приёмка: `id` non-root,
-  keyed-эндпоинты, GPU/model-load, memlock unlimited, shm 1g, память
-  ниже финального лимита с запасом, сессия пережила рестарт;
-- `TODO.md` Этап 26: чекбоксы отмечены, финальное `LLAMA_MEM`;
+- live-окно: приёмка по протоколу §7: `id` non-root, keyed-эндпоинты,
+  GPU/model-load, memlock unlimited, shm 1g, замеры памяти (baseline +
+  динамика, F8/F16), сессия пережила рестарт; OOM на 120g — задокументирован
+  (не отказ этапа, R3/R7);
+- `TODO.md` Этап 26: чекбоксы отмечены, `LLAMA_MEM=120g`;
 - finishing: merge ветки в `main`.
