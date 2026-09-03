@@ -35,7 +35,7 @@ LLM (NVIDIA): модули ядра, драйвер, OC/авто-свитч, р�
 ### 23. Остатки плана из архива (выборочно)
 - [x] cache-ram: вытеснение/restore — верификация на живом контейнере (2026-09-02, отчёт: docs/superpowers/reports/2026-09-02-cache-ram-verification.md)
 - [ ] lact-autoswitch: до-состояние при пересборке драйвера
-- [ ] док: README-секции по развёртыванию (с local.mk)
+- [x] док: README-секции по развёртыванию (с local.mk)
 
 ### 24. CUDA toolkit: NVIDIA fedora44 dnf-репо (13.2.2 → 13.3.1)
 - [x] Пре-чек: dnf5×репо, NEVRA-пины, weakdeps, размещение файлов,

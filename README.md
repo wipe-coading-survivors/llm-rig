@@ -16,16 +16,52 @@ LLM (NVIDIA): модули ядра, драйвер, OC/авто-свитч, lla
   (конвенция появится со следующего этапа)
 - `local.mk` / `local.mk.example` — machine-local значения / шаблон
 
-## Быстрый старт
+## Развёртывание
+
+**Пре-рекиситы хоста:**
+
+- podman; переменная `CRE`: `podman` (сборка на хосте) или
+  `podman-remote` (сборка из toolbx — рецепты исполняются на хосте).
+  В toolbx `HOST_ROOT` автоматически `/run/host`.
+- Хостовое ядро (kmod собирается под него: `KVER`) и GPU NVIDIA.
+  Драйвер и модули ядра даёт репо (redist → образ `kmod` → грузит
+  `nvidia-kmod.service`), предустановка на хосте не нужна.
+- NFS-шара с моделями (`LLM_NFS_SERVER`).
+
+**`local.mk`** (untracked, gitignored):
 
 ```sh
-cp local.mk.example local.mk   # заполнить: LLAMA_HOST, LLM_NFS_SERVER
-make llama-cpp-cuda            # образ рантайма (нужны CRE + NVIDIA drv)
-make systemd                   # юниты + sysconfig на хост (HOST_ROOT)
+cp local.mk.example local.mk
 ```
 
-`local.mk` (untracked) — machine-local значения. Без него
-`make systemd` не работает (fail-loud); сборка образов — работает.
+- Обязательные: `LLAMA_HOST`, `LLM_NFS_SERVER`.
+- Опциональные: `REPO_BASE_URL` (своё Fedora-зеркало),
+  `CUDA_DEVEL_SET`/`CUDA_RUNTIME_SET` (точные NEVRA вместо серии),
+  `OPENCODE_CONFIG` (конфиг opencode для рестарт-скрипта).
+- Без `local.mk` сборка образов работает, `make systemd` — fail-loud.
+
+**Цепь образов** — одна команда, порядок — по зависимостям Makefile
+(base → kernel/kmod/driver → cuda → nccl → runtime):
+
+```sh
+make llama-cpp-cuda
+```
+
+**Деплой на хост** (`$(HOST_ROOT)`):
+
+```sh
+make systemd
+```
+
+Деплоится: 6 юнитов (`nvidia-kmod`, `nvidia-card-setting`,
+`lact-autoswitch`, `llama-cpp`, `llama-cpp-watcher`,
+`var-local-llm.mount` — NFS-маунт), скрипты в `/usr/local/bin/`,
+sysconfig с дефолтами (OC-параметры, `LLAMA_*`: образ, порт,
+`LLAMA_UID`/`LLAMA_MEM`/`LLAMA_SHM_SIZE`), keys `chmod 640`.
+`daemon-reload` + `enable` — стек поднимается на боте.
+
+Эксплуатация живого сервера (эндпоинты, ключи, рестарт-протокол,
+память) — `LIVE-SERVER.md`.
 
 ## Тесты
 
