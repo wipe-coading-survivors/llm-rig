@@ -456,6 +456,12 @@ def main():
     fallback_on = False
     fb_alarm_armed = True
     lact_down_alarm = False
+    pinned = False
+    pin_ts = None
+    pin_n = 0
+    last_block_log = None
+    thermal_demotes = []
+    engaged_prev = False
     pending = None
     pending_fails = 0
     pending_at = 0
@@ -463,9 +469,26 @@ def main():
     _up0, actual0 = probe_socket()
     hist.restart_marker(actual0 if actual0 else "-")
 
+    def adopt_pin(where):
+        nonlocal pinned, pin_ts, pin_n
+        ts, n, _reason = parse_pin_file(PIN_FILE)
+        pinned = True
+        if ts is not None:
+            pin_ts = ts
+            log("pin: ACTIVE (%s) age=%dm - safe held"
+                % (where, (int(time.time()) - ts) // 60))
+        else:
+            log("pin: ACTIVE (%s) - safe held" % where)
+        if n is not None and n > pin_n:
+            pin_n = n
+
+    if os.path.exists(PIN_FILE):
+        adopt_pin("adopted at start")
+
     cyc = 0
     while True:
         cyc += 1
+        now_ts = int(time.time())
         # --- load sample (every cycle) ---
         status, body = poll_load(LLAMA_URL, LLAMA_MODEL, key)
         sample = load_sample(status, body)
@@ -514,9 +537,23 @@ def main():
             lact_down_alarm = False
             fb_alarm_armed = True
 
+        # --- pin: release / external adoption (spec 27) ---
+        if pinned and not os.path.exists(PIN_FILE):
+            age = "" if pin_ts is None else " (age=%dm)" % (
+                (now_ts - pin_ts) // 60)
+            log("pin: released%s - actual=%s adopted, switching resumed"
+                % (age, actual if actual else "-"))
+            pinned = False
+            pin_ts = None
+        elif not pinned and os.path.exists(PIN_FILE):
+            adopt_pin("external")
+
         # --- decide ---
         engaged = decide_thermal(thermal_win, engaged, n_engage, n_release,
                                  TEMP_SAFE, TEMP_SAFE_BACK_DELTA)
+        if engaged and not engaged_prev:
+            thermal_demotes.append(now_ts)
+        engaged_prev = engaged
         load_state = decide_load(load_win, n_idle, n_down)
         target = decide_target(socket_state == "up", engaged, auth_streak,
                                load_state)
@@ -532,6 +569,38 @@ def main():
             reason = "idle"
         else:
             reason = "active"
+
+        # --- pin trigger + ceiling (spec 27): block Default only ---
+        if not pinned:
+            crash_ts = read_crash_events(CRASH_EVENTS_FILE, now_ts,
+                                         CRASH_PIN_WINDOW)
+            do_pin, preason, pcount, pwindow = decide_pin(
+                crash_ts, now_ts, CRASH_PIN_COUNT, CRASH_PIN_WINDOW,
+                thermal_demotes, THERMAL_PIN_COUNT, THERMAL_PIN_WINDOW,
+                False)
+            if do_pin:
+                pin_n += 1
+                write_pin_file(PIN_FILE, preason, pcount, pwindow, now_ts,
+                               pin_n)
+                pinned = True
+                pin_ts = now_ts
+                if pin_n > 1:
+                    log("pin: re-pin n=%d reason=%s count=%d window=%d - problem persists"
+                        % (pin_n, preason, pcount, pwindow))
+                else:
+                    log("pin: ACTIVE reason=%s count=%d window=%d n=%d - safe held; release: rm %s"
+                        % (preason, pcount, pwindow, pin_n, PIN_FILE))
+                if up and actual != "safe":
+                    okset, detail = apply_profile("safe")
+                    if not okset:
+                        alarm("pin: apply safe failed: %s" % detail)
+        if pinned and target == "Default":
+            if pin_log_due(now_ts, last_block_log, PIN_LOG_EVERY):
+                log("pin: transition to Default blocked (%s) - fix the root cause: OC under an unresolved issue degrades the GPU"
+                    % reason)
+                last_block_log = now_ts
+            target = "HOLD"
+            reason = "pin-blocked"
 
         # --- apply ---
         switched = "-"
