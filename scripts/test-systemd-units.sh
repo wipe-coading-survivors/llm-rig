@@ -194,6 +194,11 @@ expect_grep "mount: WantedBy multi-user" "$u_mount" '^WantedBy=multi-user\.targe
 # --- 7a. lact-autoswitch.service ---
 expect_grep "autoswitch: EnvironmentFile" "$u_autoswitch" '^EnvironmentFile=/etc/sysconfig/lact-autoswitch$'
 expect_grep "autoswitch: --name" "$u_autoswitch" '^[[:space:]]*--name lact-autoswitch[[:space:]]*\\$'
+expect_grep "autoswitch: -e CRASH_PIN_COUNT" "$u_autoswitch" '^[[:space:]]*-e CRASH_PIN_COUNT=\$\{CRASH_PIN_COUNT\}[[:space:]]*\\$'
+expect_grep "autoswitch: -e CRASH_PIN_WINDOW" "$u_autoswitch" '^[[:space:]]*-e CRASH_PIN_WINDOW=\$\{CRASH_PIN_WINDOW\}[[:space:]]*\\$'
+expect_grep "autoswitch: -e THERMAL_PIN_COUNT" "$u_autoswitch" '^[[:space:]]*-e THERMAL_PIN_COUNT=\$\{THERMAL_PIN_COUNT\}[[:space:]]*\\$'
+expect_grep "autoswitch: -e THERMAL_PIN_WINDOW" "$u_autoswitch" '^[[:space:]]*-e THERMAL_PIN_WINDOW=\$\{THERMAL_PIN_WINDOW\}[[:space:]]*\\$'
+expect_grep "autoswitch: -e PIN_LOG_EVERY" "$u_autoswitch" '^[[:space:]]*-e PIN_LOG_EVERY=\$\{PIN_LOG_EVERY\}[[:space:]]*\\$'
 expect_grep "autoswitch: ExecStartPre rm -f" "$u_autoswitch" '^ExecStartPre=-/usr/bin/podman rm -f lact-autoswitch$'
 expect_grep "autoswitch: ExecStartPre mkdir host dirs" "$u_autoswitch" '^ExecStartPre=/usr/bin/mkdir -p /run/lactd /run/lact-autoswitch$'
 expect_grep "autoswitch: label=disable" "$u_autoswitch" '--security-opt label=disable'

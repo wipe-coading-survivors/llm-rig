@@ -40,14 +40,19 @@ cp local.mk.example local.mk
   `OPENCODE_CONFIG` (конфиг opencode для рестарт-скрипта).
 - Без `local.mk` сборка образов работает, `make systemd` — fail-loud.
 
-**Цепь образов** — одна команда, порядок — по зависимостям Makefile
-(base → kernel/kmod/driver → cuda → nccl → runtime):
+**Образы** — три ветки, порядок — по зависимостям Makefile:
+`llama-cpp-cuda` (runtime-цепь: base → driver → cuda → nccl → runtime),
+`kmod` (модули ядра), `nvidia-lact-autoswitch` (LACT).
+`all` (целевой по умолчанию) — все ветки + деплой:
 
 ```sh
-make llama-cpp-cuda
+make all
 ```
 
-**Деплой на хост** (`$(HOST_ROOT)`):
+Частичная сборка: `make llama-cpp-cuda`, `make kmod`,
+`make nvidia-lact-autoswitch`.
+
+**Деплой на хост** (`$(HOST_ROOT)`; входит в `all`):
 
 ```sh
 make systemd
@@ -60,6 +65,14 @@ sysconfig с дефолтами (OC-параметры, `LLAMA_*`: образ, �
 `LLAMA_UID`/`LLAMA_MEM`/`LLAMA_SHM_SIZE`), keys `chmod 640`.
 `daemon-reload` + `enable` — стек поднимается на боте.
 
+После пересборки driver-стадии (образы kmod/driver/lact):
+`systemctl restart nvidia-kmod nvidia-card-setting lact-autoswitch`;
+`llama-cpp` — протоколом Этапа 25 (`make llama-cpp-restart
+MODE=restart`). Pin `safe` (Этап 27) при этом переживает рестарты
+(файл в `/run`). Снятие пина — `rm /run/lact-autoswitch/pin`; если
+цикл крахов закончен, также `rm /run/lact-autoswitch/crashes` (иначе
+свежее событие в окне 600 c переставит pin).
+
 Эксплуатация живого сервера (эндпоинты, ключи, рестарт-протокол,
 память) — `LIVE-SERVER.md`.
 
@@ -67,4 +80,5 @@ sysconfig с дефолтами (OC-параметры, `LLAMA_*`: образ, �
 
 ```sh
 for t in scripts/test-*.sh; do sh "$t" || break; done
+python3 scripts/test-lact-autoswitch.py   # LACT-хелпер (TAP)
 ```

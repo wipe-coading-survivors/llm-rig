@@ -233,7 +233,7 @@ expect_no_from() {
 }
 
 # --- 1. make -n: syntax of all active targets ---
-for t in nvidia-base kernel-devel kernel-redist kmod-oss kmod nvidia-redist-drv lact-redist \
+for t in all nvidia-base kernel-devel kernel-redist kmod-oss kmod nvidia-redist-drv lact-redist \
          nvidia-xorg nvidia-cuda-devel nvidia-cuda-libs nvidia-nccl-devel \
           nvidia-nccl-libs nvidia-lact nvidia-lact-autoswitch nvidia-nccl llama-cpp-cuda llama-cpp-cuda-debug clean systemd llama-cpp-restart ; do
     rc=0
@@ -246,6 +246,19 @@ for t in nvidia-base kernel-devel kernel-redist kmod-oss kmod nvidia-redist-drv 
         ko "make -n $t" "rc=0" "rc=$rc"
     fi
 done
+
+# --- 1a. all: default goal + exact line ---
+first_target=$(grep -m1 -oE '^[A-Za-z0-9_-]+:' "$repo_root/Makefile")
+if [ "$first_target" = "all:" ]; then
+    ok "all: is the default goal (first target)"
+else
+    ko "all: is the default goal (first target)" "all:" "$first_target"
+fi
+if grep -qF 'all: kmod llama-cpp-cuda nvidia-lact-autoswitch systemd' "$repo_root/Makefile"; then
+    ok "all: exact target line"
+else
+    ko "all: exact target line" "all: kmod llama-cpp-cuda nvidia-lact-autoswitch systemd" "not found"
+fi
 
 # --- 2. nvidia-base ---
 make_target nvidia-base REPO_BASE_URL="$repo_base_url"
@@ -914,6 +927,11 @@ syscfg "sysconfig lact-autoswitch LLAMA_MODEL" "$sys/lact-autoswitch" "LLAMA_MOD
 syscfg "sysconfig lact-autoswitch LLAMA_KEYS_FILE" "$sys/lact-autoswitch" "LLAMA_KEYS_FILE=/etc/llama/llama-cpp-keys.txt"
 syscfg "sysconfig lact-autoswitch KEY_MARKER" "$sys/lact-autoswitch" "KEY_MARKER=lact-autoswitch"
 syscfg "sysconfig lact-autoswitch POLL_INTERVAL" "$sys/lact-autoswitch" "POLL_INTERVAL=5"
+syscfg "sysconfig lact-autoswitch CRASH_PIN_COUNT" "$sys/lact-autoswitch" "CRASH_PIN_COUNT=3"
+syscfg "sysconfig lact-autoswitch CRASH_PIN_WINDOW" "$sys/lact-autoswitch" "CRASH_PIN_WINDOW=600"
+syscfg "sysconfig lact-autoswitch THERMAL_PIN_COUNT" "$sys/lact-autoswitch" "THERMAL_PIN_COUNT=3"
+syscfg "sysconfig lact-autoswitch THERMAL_PIN_WINDOW" "$sys/lact-autoswitch" "THERMAL_PIN_WINDOW=1800"
+syscfg "sysconfig lact-autoswitch PIN_LOG_EVERY" "$sys/lact-autoswitch" "PIN_LOG_EVERY=300"
 syscfg "sysconfig lact-autoswitch THERMAL_EVERY" "$sys/lact-autoswitch" "THERMAL_EVERY=3"
 syscfg "sysconfig lact-autoswitch TIME_IDLE" "$sys/lact-autoswitch" "TIME_IDLE=120"
 syscfg "sysconfig lact-autoswitch TIME_DOWN" "$sys/lact-autoswitch" "TIME_DOWN=300"

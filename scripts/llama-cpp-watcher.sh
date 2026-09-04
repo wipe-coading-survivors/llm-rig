@@ -22,6 +22,9 @@ PATTERN='CUDA error: an illegal memory access'
 # обе строки — одно корневое состояние
 PATTERN_2='CUDA error: an internal operation failed'
 COOLDOWN=120
+# stage 27: crash-события для pin-политики lact-autoswitch (спека
+# 2026-09-03-stage27-pin-safe-design.md §4.1); env-override — тесты
+CRASH_EVENTS_FILE=${CRASH_EVENTS_FILE:-/run/lact-autoswitch/crashes}
 
 log() { echo "[$(date '+%F %T')] $*"; }
 err() { echo "[$(date '+%F %T')] ERR: $*"; }
@@ -37,12 +40,20 @@ act() {
     return 0
   fi
   err "zombie-сигнатура в журнале $UNIT: $1"
+  record_crash_event
   if podman kill "$CONTAINER" 2>/dev/null; then
     log "killed $CONTAINER — юнит оживит (Restart=always, RestartSec=30)"
   else
     log "WARN: podman kill $CONTAINER не удался (контейнер уже исчез?)"
   fi
   LAST_ACT=$(date +%s)
+}
+
+record_crash_event() {
+  mkdir -p "$(dirname "$CRASH_EVENTS_FILE")"
+  echo "$(date +%s)" >> "$CRASH_EVENTS_FILE"
+  tail -n 100 "$CRASH_EVENTS_FILE" > "$CRASH_EVENTS_FILE.tmp"
+  mv "$CRASH_EVENTS_FILE.tmp" "$CRASH_EVENTS_FILE"
 }
 
 main() {

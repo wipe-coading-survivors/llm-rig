@@ -227,6 +227,66 @@ try:
             for d in shim_descs:
                 ko(d, "install_client_shim defined",
                    "AttributeError: %s" % e)
+
+    # --- stage 27: pin (spec 2026-09-03-stage27-pin-safe-design.md) ---
+    pin_desc = ("pin: pure functions defined (decide_pin, "
+                "read_crash_events, parse_pin_file, pin_log_due, "
+                "write_pin_file)")
+    try:
+        NOW = 1786000000
+        CW, TW = 600, 1800
+
+        check("decide_pin: below crash threshold",
+              m.decide_pin([NOW - 100, NOW - 50], NOW, 3, CW, [], 3, TW, False),
+              (False, None, 0, 0))
+        check("decide_pin: crash threshold reached",
+              m.decide_pin([NOW - 100, NOW - 50, NOW - 10], NOW, 3, CW, [], 3, TW, False),
+              (True, "crashes", 3, CW))
+        check("decide_pin: old events outside window",
+              m.decide_pin([NOW - 601, NOW - 700, NOW - 800], NOW, 3, CW, [], 3, TW, False),
+              (False, None, 0, 0))
+        check("decide_pin: future ts ignored",
+              m.decide_pin([NOW + 5, NOW + 6, NOW + 7], NOW, 3, CW, [], 3, TW, False),
+              (False, None, 0, 0))
+        check("decide_pin: thermal threshold",
+              m.decide_pin([], NOW, 3, CW, [NOW - 100, NOW - 50, NOW - 10], 3, TW, False),
+              (True, "thermal", 3, TW))
+        check("decide_pin: crashes priority over thermal",
+              m.decide_pin([NOW - 100, NOW - 50, NOW - 10], NOW, 3, CW,
+                           [NOW - 100, NOW - 50, NOW - 10], 3, TW, False),
+              (True, "crashes", 3, CW))
+        check("decide_pin: pinned -> no retrigger",
+              m.decide_pin([NOW - 100, NOW - 50, NOW - 10], NOW, 3, CW, [], 3, TW, True),
+              (False, None, 0, 0))
+
+        ev = os.path.join(tmpd, "crashes")
+        with open(ev, "w") as f:
+            f.write("%d\n%d\ngarbage\n%d\n" % (NOW - 100, NOW - 10, NOW - 900))
+        check("read_crash_events: window + garbage skip",
+              m.read_crash_events(ev, NOW, CW), [NOW - 100, NOW - 10])
+        check("read_crash_events: missing file",
+              m.read_crash_events(os.path.join(tmpd, "nope"), NOW, CW), [])
+
+        pf = os.path.join(tmpd, "pin")
+        m.write_pin_file(pf, "crashes", 3, CW, NOW, 2)
+        check("pin file roundtrip", m.parse_pin_file(pf), (NOW, 2, "crashes"))
+        with open(pf, "w") as f:
+            f.write("")
+        check("pin file empty -> external", m.parse_pin_file(pf), (None, None, "external"))
+        check("pin file missing -> external",
+              m.parse_pin_file(os.path.join(tmpd, "nope2")), (None, None, "external"))
+        with open(pf, "w") as f:
+            f.write("not a pin line\n")
+        check("pin file garbage -> external", m.parse_pin_file(pf), (None, None, "external"))
+        with open(pf, "w") as f:
+            f.write("reason=thermal count=3 window=1800 ts=xyz n=bad\n")
+        check("pin file partial parse", m.parse_pin_file(pf), (None, None, "thermal"))
+
+        check("pin_log_due: first", m.pin_log_due(NOW, None, 300), True)
+        check("pin_log_due: inside interval", m.pin_log_due(NOW, NOW - 100, 300), False)
+        check("pin_log_due: boundary", m.pin_log_due(NOW, NOW - 300, 300), True)
+    except AttributeError as e:
+        ko(pin_desc, "pin functions defined", "AttributeError: %s" % e)
 finally:
     shutil.rmtree(tmpd, ignore_errors=True)
 
