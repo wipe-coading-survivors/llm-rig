@@ -40,7 +40,7 @@ check_count "llama-run.sh: /etc/llama mount" "$run" '-v /etc/llama:/llama:ro' 1
 check_count "llama-run.sh: CRE detection kept" "$run" '/run/.containerenv' 1
 check_count "llama-run.sh: shm-size 1g" "$run" '--shm-size=1g' 1
 check_count "llama-run.sh: non-root user" "$run" '-u 1001001:0' 1
-check_count "llama-run.sh: memory limit 120g" "$run" '-m 120g' 1
+check_count "llama-run.sh: memory limit 192g" "$run" '-m 192g' 1
 check_count "llama-run.sh: memlock ulimit" "$run" '--ulimit memlock=-1:-1' 1
 check_count "llama-run.sh: nvidiactl device" "$run" '--device /dev/nvidiactl' 1
 check_count "llama-run.sh: nvidia-uvm device" "$run" '--device /dev/nvidia-uvm' 1

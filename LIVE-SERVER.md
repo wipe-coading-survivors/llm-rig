@@ -10,9 +10,10 @@
   (`-p ${LLAMA_PORT}:8080`), non-root `-u ${LLAMA_UID}:0` (gid 0
   читает keys `640 root:root` и `/dev/nvidia*` `660 root:root`),
   без `--privileged` (devices: `nvidia0-4` + `nvidiactl` +
-  `nvidia-uvm`), `-m ${LLAMA_MEM}` (стартовое 120g; при OOM оператор
-  поднимает в sysconfig — потребление растёт с накопленным
-  трафиком), `--ulimit memlock=-1:-1` (mlock-модель),
+  `nvidia-uvm`), `-m ${LLAMA_MEM}` (стартовое 192g: пул cache-ram
+  96 GiB (тир 3) + live 2×215k; 160g + пул 128 GiB давал OOM×6 за
+  2 дня — 06.09, «Числа» и отчёт Этапа 26 §10),
+  `--ulimit memlock=-1:-1` (mlock-модель),
   `--shm-size ${LLAMA_SHM_SIZE}` (1g; NCCL/CUDA IPC ~185M),
   `--models-preset /llama/llama.ini` (маунт `/etc/llama:/llama:ro`).
   Инстанс — единственный потомок pid 1; его порт наружу не
@@ -138,6 +139,26 @@ non-root-контейнер, лимит `LLAMA_MEM=120g`, та же модель
   рекалмится 29.9→7.8 GiB как кушон, OOM нет). 19:40 оператор:
   `LLAMA_MEM=160g` (worst case pool+KV+shmem ≈ 150); рестарт 19:43 —
   102+24 s (тёплый NFS), `memory.max=171798691840`.
+
+Замеры 06.09 (OOM-анализ при 160g; полный разбор — отчёт Этапа 26
+§10, `docs/superpowers/reports/2026-09-03-stage26-llama-cpp-nonroot.md`):
+
+- 6 cgroup-OOM-киллов инстанса (04.09 ×2, 05.09 ×2, 06.09 ×2) —
+  контейнер (роутер) во всех случаях выживал, респаунил инстанс;
+  watcher не срабатывал (zombie-сигнатуры в логе нет).
+- Состав килла: `usage = limit = 160 GiB`; anon 158 GiB =
+  cache-ram 128 GiB (полный) + ~28 GiB (KV 2 слотов + scratch
+  префиллов + checkpoint'и) + shmem/file/kernel ~5 GiB.
+- KV-ставка (q8_0): ~122 MiB/1k токенов → 215k-слот ≈ 25 GiB;
+  структурный потолок конфига 128 + 2×215k + прочее ≈ 188 GiB >
+  160g — OOM при одновременном префилле двух крупных сессий.
+- Цена OOM: ~6 мин деградации (загрузка модели + полные ре-префиллы
+  обеих сессий 285 + 243 s), клиентам 500.
+- Пул квантован по сессиям (тиры): T1 32 GiB → лимит 80g;
+  T2 64 GiB → 160g; T3 (3-я сессия рабочая) 96 GiB → 192g.
+- Решение 06.09: `LLAMA_MEM=192g` + `cache-ram=98304` (T3);
+  max ~152 GiB, запас ~40 GiB; host-sysconfig — вручную
+  (sysconfig-gen: значение файла сильнее `--default`).
 
 ## Логи
 

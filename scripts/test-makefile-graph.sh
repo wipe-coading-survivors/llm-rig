@@ -947,7 +947,7 @@ syscfg "sysconfig llama-cpp LLAMA_LOG_TIMESTAMPS" "$sys/llama-cpp" "LLAMA_LOG_TI
 syscfg "sysconfig llama-cpp LLAMA_PORT" "$sys/llama-cpp" "LLAMA_PORT=8080"
 syscfg "sysconfig llama-cpp LLAMA_SHM_SIZE" "$sys/llama-cpp" "LLAMA_SHM_SIZE=1g"
 syscfg "sysconfig llama-cpp LLAMA_UID" "$sys/llama-cpp" "LLAMA_UID=1001001"
-syscfg "sysconfig llama-cpp LLAMA_MEM" "$sys/llama-cpp" "LLAMA_MEM=120g"
+syscfg "sysconfig llama-cpp LLAMA_MEM" "$sys/llama-cpp" "LLAMA_MEM=192g"
 keys="$tmp/hostroot/etc/llama/llama-cpp-keys.txt"
 if [ "$(stat -c %a "$keys" 2>/dev/null || echo absent)" = "640" ]; then
     ok "systemd: keys chmod 600 -> 640"

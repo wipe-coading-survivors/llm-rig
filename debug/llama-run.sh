@@ -13,7 +13,7 @@ exec $CRE run -d --name llama-cpp \
   --device /dev/nvidia3 --device /dev/nvidia4 \
   --device /dev/nvidiactl --device /dev/nvidia-uvm \
   --security-opt label=disable --shm-size=1g \
-  -u 1001001:0 -m 120g \
+  -u 1001001:0 -m 192g \
   --ulimit memlock=-1:-1 \
   -v /var/local/llm/gguf-models:/models \
   -v /etc/llama:/llama:ro \
