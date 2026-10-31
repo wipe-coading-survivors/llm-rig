@@ -177,6 +177,7 @@ expect_grep "llama: memlock ulimit" "$u_llama" '^[[:space:]]*--ulimit memlock=-1
 expect_grep "llama: nvidiactl device" "$u_llama" '^[[:space:]]*--device /dev/nvidiactl[[:space:]]*\\$'
 expect_grep "llama: nvidia-uvm device" "$u_llama" '^[[:space:]]*--device /dev/nvidia-uvm[[:space:]]*\\$'
 expect_grep "llama: models-preset /llama" "$u_llama" '\-\-models-preset /llama/llama\.ini'
+expect_grep "llama: api-key-file router" "$u_llama" '\-\-api-key-file /llama/llama-cpp-keys\.txt'
 expect_no_grep "llama: no --privileged" "$u_llama" '(^|[[:space:]])--privileged([[:space:]]|$)'
 expect_grep "llama: Restart=always" "$u_llama" '^Restart=always$'
 expect_no_grep "llama: no CUDA_VISIBLE_DEVICES" "$u_llama" 'CUDA_VISIBLE_DEVICES'

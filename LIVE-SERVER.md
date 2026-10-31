@@ -26,18 +26,23 @@
   система хоста — `/run/host`, systemctl — `chroot /run/host
   /usr/bin/systemctl`, контейнеры — `CRE` (`podman`/`podman-remote`
   по `/run/.containerenv`).
-- Эндпоинты роутера:
-  - `/health` — без ключа;
-  - `/v1/models` — без ключа; `status.value` (`loaded`) и полные args
+- Эндпоинты роутера (образ a01ce9ffc, с 24.10):
+  - `/health` — без ключа (единственный публичный);
+  - `/v1/models` — **ключ**; `status.value` (`loaded`) и полные args
     инстанса (доказательство тождества локального контейнера и сервера
     сессии — сверка args);
   - `/slots?model=<M>` — **ключ** (`Authorization: Bearer`):
     `is_processing` на слот — сигнал «инференс в полёте»;
   - `POST /v1/chat/completions` — ключ; verify после рестарта.
-- Ключи: хостовый `/etc/llama/llama-cpp-keys.txt` (mode `640 root:root`
-  — gid 0 читает, контейнер non-root; `make systemd` ставит 640
-  idempotent-шагом; файл с `#`-комментариями и пустыми строками;
-  рабочая строка — первая из не-комментариев). Читаются в рантайме;
+- Ключи: файл отдаётся роутеру `--api-key-file` в аргументах юнита
+  (инстансу ключ не передаётся отдельно: он на `127.0.0.1` внутри
+  контейнера, наружу — только роутер; в образе a01ce9ffc строка
+  `api-key-file` в `[*]`-секции `llama.ini` игнорируется — ключи в
+   ini не писать). Хостовый `/etc/llama/llama-cpp-keys.txt`
+   (mode `640 root:root` — gid 0 читает, контейнер non-root;
+   `make systemd` ставит 640 idempotent-шагом; файл с `#`-комментариями
+   и пустыми строками; рабочая строка — первая из не-комментариев).
+   Читаются в рантайме;
   **не писать в логи/argv** (no-sensitive), без `curl -v` на
   keyed-эндпоинтах.
 

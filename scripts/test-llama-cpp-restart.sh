@@ -53,6 +53,10 @@ class H(http.server.BaseHTTPRequestHandler):
             else:
                 self._send(503, {"status": "loading"})
         elif self.path == "/v1/models":
+            # образ a01ce9ffc: публичен только /health; /v1/models — ключ
+            if self.headers.get("Authorization", "") != "Bearer test-key-123":
+                self._send(401, {"error": "unauthorized"})
+                return
             if flag("ready"):
                 self._send(200, {"data": [{"id": "default",
                                            "aliases": [],
@@ -88,11 +92,12 @@ http.server.ThreadingHTTPServer(("127.0.0.1", port), H).serve_forever()
 PY
 python3 "$tmp/mock.py" "$port" "$state" &
 mock_pid=$!
+# любой HTTP-ответ = слушает (/v1/models теперь keyed; -f не ставим)
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    if curl -fsS "http://127.0.0.1:$port/v1/models" > /dev/null 2>&1; then break; fi
+    if curl -sS -o /dev/null "http://127.0.0.1:$port/health" 2>/dev/null; then break; fi
     sleep 0.1
 done
-curl -fsS "http://127.0.0.1:$port/v1/models" > /dev/null
+curl -sS -o /dev/null "http://127.0.0.1:$port/health"
 
 # --- PATH stubs: podman (ps/inspect), systemctl (calls log, ready toggle) ---
 bin=$tmp/bin
@@ -246,7 +251,7 @@ touch "$state/busy"
 ( sleep 3; rm -f "$state/busy" ) &
 waiter=$!
 rc=0
-run_script restart --idle-timeout 20 || rc=$?
+run_script restart --idle-timeout 20 --ready-timeout 15 || rc=$?
 wait "$waiter"
 if [ "$rc" -eq 0 ]; then
     ok "restart full rc=0"
@@ -324,6 +329,14 @@ if [ "$ready_before" = "$ready_after" ]; then
     ok "restart bad-key: server untouched (ready flag as before)"
 else
     ko "restart bad-key: server untouched (ready flag as before)" "ready=$ready_before" "ready=$ready_after"
+fi
+
+# --- 11. /v1/models keyed in script (image a01ce9ffc: public = /health only) ---
+keyed_models=$(grep -cF 'get /v1/models 1' "$script" || true)
+if [ "$keyed_models" -eq 2 ]; then
+    ok "script: /v1/models keyed (wait_ready + check_mode)"
+else
+    ko "script: /v1/models keyed (wait_ready + check_mode)" "2 occurrences" "$keyed_models"
 fi
 
 echo "# pass=$pass fail=$fail"

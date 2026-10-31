@@ -181,7 +181,7 @@ wait_ready() {
     while :; do
         get /health 0
         health=$HTTP_CODE
-        get /v1/models 0
+        get /v1/models 1
         models=$(cat "$BODY_FILE")
         if [ "$health" = 200 ] \
             && grep -q "\"id\":\"$LLAMA_MODEL\"" <<< "$models" \
@@ -211,7 +211,7 @@ check_mode() {
     fi
     busy=$(grep -o '"is_processing":true' <<< "$slots" | wc -l)
     st check "slots busy=$busy"
-    get /v1/models 0
+    get /v1/models 1
     models=$(cat "$BODY_FILE")
     if grep -q "\"id\":\"$LLAMA_MODEL\"" <<< "$models" && grep -q '"value":"loaded"' <<< "$models"; then
         st check "model loaded"

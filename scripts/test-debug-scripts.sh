@@ -46,6 +46,7 @@ check_count "llama-run.sh: nvidiactl device" "$run" '--device /dev/nvidiactl' 1
 check_count "llama-run.sh: nvidia-uvm device" "$run" '--device /dev/nvidia-uvm' 1
 check_count "llama-run.sh: no --privileged" "$run" '--privileged' 0
 check_count "llama-run.sh: models-preset /llama" "$run" '--models-preset /llama/llama.ini' 1
+check_count "llama-run.sh: api-key-file router" "$run" '--api-key-file /llama/llama-cpp-keys.txt' 1
 
 # --- llama-send.py: KEYFILE branch by /run/.containerenv ---
 check_count "llama-send.py: containerenv branch" "$send" 'os.path.isfile("/run/.containerenv")' 1
